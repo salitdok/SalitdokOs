@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Salitdok OS — Command Center</title>
+<style>
+  :root{
+    --ink:#14182B; --paper:#FAF8F5; --orange:#F2691E;
+    --up:#0E9F6E; --down:#E02424; --amber:#F59E0B; --slate:#5B6472;
+    --line:#E2DDD4;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sukhumvit Set","Noto Sans Thai",sans-serif;
+    background:var(--paper); color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  .tnum{font-variant-numeric:tabular-nums}
+  button{font-family:inherit;cursor:pointer;border:none}
+  button:active{transform:scale(.96)}
+  input{font-family:inherit}
+
+  /* login */
+  .loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--ink)}
+  .loginbox{width:100%;max-width:380px}
+  .brand{color:#fff;font-size:24px;font-weight:800;letter-spacing:-.02em}
+  .brandsub{color:#9AA3B2;font-size:14px;margin-top:2px}
+  .card{background:var(--paper);border-radius:24px;padding:20px;margin-top:22px}
+  .field{margin-bottom:12px}
+  .flabel{font-size:14px;font-weight:600}
+  .fhint{font-size:12px;color:var(--slate);margin:1px 0 5px}
+  .finput{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:#fff;outline:none}
+  .finput:focus{border-color:var(--orange)}
+  .btn{width:100%;height:52px;border-radius:16px;background:var(--orange);color:#fff;font-weight:700;font-size:16px;margin-top:4px}
+  .btn[disabled]{opacity:.6}
+  .err{background:#FDECEC;color:var(--down);font-size:14px;border-radius:12px;padding:8px 12px;margin:2px 0 12px}
+  .note{color:#828BA0;font-size:12px;line-height:1.6;margin-top:16px}
+
+  /* dashboard */
+  .console{padding:24px 20px 26px;background:var(--ink);border-radius:0 0 26px 26px}
+  .row{display:flex;align-items:center;justify-content:space-between}
+  .storename{color:#fff;font-size:18px;font-weight:800;letter-spacing:-.02em}
+  .datestr{color:#9AA3B2;font-size:12px;margin-top:2px}
+  .refresh{color:#fff;font-size:12px;background:#222a45;border-radius:99px;padding:8px 12px}
+  .pulse{display:flex;align-items:flex-end;gap:12px;margin-top:20px}
+  .plabel{color:#9AA3B2;font-size:12px}
+  .pnum{color:#fff;font-weight:800;font-size:40px;line-height:1}
+  .pdelta{font-size:14px;font-weight:700;padding-bottom:4px}
+  .psub{color:#828BA0;font-size:12px;margin-top:4px}
+  .spark{display:flex;align-items:flex-end;gap:6px;height:44px;margin-top:16px}
+  .bar{flex:1;border-radius:5px 5px 0 0;min-height:3px}
+
+  .sec{padding:0 20px;margin-top:24px}
+  .sectitle{font-size:14px;font-weight:800;letter-spacing:-.01em;margin-bottom:12px}
+  .acard{background:#fff;border-radius:16px;overflow:hidden;display:flex;box-shadow:0 1px 3px rgba(20,24,43,.08);margin-bottom:12px}
+  .abar{width:5px;flex:none}
+  .abody{padding:16px;flex:1}
+  .atop{display:flex;gap:8px;align-items:flex-start}
+  .aicon{font-size:18px;line-height:1}
+  .atitle{font-weight:700;font-size:16px;line-height:1.3}
+  .adesc{font-size:14px;color:var(--slate);margin-top:4px;line-height:1.55}
+  .abtn{margin-top:12px;background:#FCEEE6;color:var(--orange);font-weight:700;font-size:14px;border-radius:12px;padding:8px 16px}
+
+  .grid{padding:0 20px;margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(20,24,43,.06)}
+  .statlabel{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--slate)}
+  .dot{width:7px;height:7px;border-radius:99px;display:inline-block}
+  .statval{font-weight:700;font-size:16px;margin-top:6px;line-height:1.3}
+  .statsub{font-size:12px;color:var(--slate);margin-top:2px}
+  .foot{padding:0 20px;margin-top:32px;padding-bottom:32px}
+  .logout{font-size:14px;color:var(--slate);background:none}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const BRAND={ink:"#14182B",orange:"#F2691E",up:"#0E9F6E",down:"#E02424",amber:"#F59E0B",slate:"#5B6472"};
+const DAY=86400000;
+const LS="salitdok_session";
+
+// ---------- helpers ----------
+const bkkDate=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok"}).format(d);
+const fmtTHB=n=>"฿"+Math.round(n||0).toLocaleString("th-TH");
+const daysSince=iso=>iso?Math.floor((Date.now()-new Date(iso).getTime())/DAY):Infinity;
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---------- Supabase REST (fetch ตรง ไม่ใช้ library) ----------
+async function signIn(url,key,email,password){
+  let res;
+  try{
+    res=await fetch(url+"/auth/v1/token?grant_type=password",{
+      method:"POST",headers:{apikey:key,"Content-Type":"application/json"},
+      body:JSON.stringify({email,password})
+    });
+  }catch(e){ throw new Error("เครือข่ายเข้าไม่ถึง Supabase — ตรวจ Project URL ว่าถูกต้อง และต้องเปิดหน้านี้ผ่าน https"); }
+  const data=await res.json();
+  if(!res.ok) throw new Error(data.error_description||data.msg||data.error||"เข้าสู่ระบบไม่สำเร็จ");
+  return data.access_token;
+}
+async function rest(s,path){
+  let res;
+  try{
+    res=await fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});
+  }catch(e){ throw new Error("เครือข่ายเข้าไม่ถึง Supabase"); }
+  if(res.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}
+  const data=await res.json();
+  if(!res.ok) throw new Error(data.message||data.hint||"ดึงข้อมูลไม่สำเร็จ");
+  return data;
+}
+async function loadAll(s){
+  const stores=await rest(s,"stores?select=id,name,timezone&limit=1");
+  if(!stores.length) throw new Error("ไม่พบร้าน — ล็อกอินด้วย user เจ้าของร้านที่ seed ไว้");
+  const store=stores[0];
+  const since=new Date(Date.now()-30*DAY).toISOString();
+  const sel="id,customer_id,net_total,ordered_at,order_items(item_name,quantity)";
+  const orders=await rest(s,`orders?select=${sel}&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);
+  const customers=await rest(s,`customers?select=id,name,total_orders,total_spent,last_order_at,favorite_item_id&store_id=eq.${store.id}&order=total_spent.desc`);
+  const menu=await rest(s,`menu_items?select=id,name&store_id=eq.${store.id}`);
+  return {store,orders,customers,menu};
+}
+
+// ---------- Facts Engine ----------
+function computeFacts({orders,customers,menu}){
+  const today=bkkDate(new Date()), yest=bkkDate(new Date(Date.now()-DAY));
+  const byDay={};
+  for(const o of orders){
+    const d=bkkDate(new Date(o.ordered_at));
+    (byDay[d]||(byDay[d]={sales:0,count:0}));
+    byDay[d].sales+=Number(o.net_total)||0; byDay[d].count+=1;
+  }
+  const t=byDay[today]||{sales:0,count:0}, y=byDay[yest]||{sales:0,count:0};
+  const deltaPct=y.sales>0?Math.round(((t.sales-y.sales)/y.sales)*100):null;
+
+  const spark=[];
+  for(let i=6;i>=0;i--){const d=bkkDate(new Date(Date.now()-i*DAY));spark.push({d,sales:(byDay[d]&&byDay[d].sales)||0,isToday:d===today});}
+
+  const cut14=Date.now()-14*DAY, cut7=Date.now()-7*DAY;
+  const qty14={},last7={},prev7={};
+  for(const o of orders){
+    const tm=new Date(o.ordered_at).getTime();
+    for(const it of o.order_items||[]){
+      const q=Number(it.quantity)||0;
+      if(tm>=cut14)qty14[it.item_name]=(qty14[it.item_name]||0)+q;
+      if(tm>=cut7)last7[it.item_name]=(last7[it.item_name]||0)+q;
+      else if(tm>=cut14)prev7[it.item_name]=(prev7[it.item_name]||0)+q;
+    }
+  }
+  let topMenu=null;
+  for(const[n,q]of Object.entries(qty14))if(!topMenu||q>topMenu.qty)topMenu={name:n,qty:q};
+  let falling=null;
+  for(const[n,p]of Object.entries(prev7)){const l=last7[n]||0;if(p>=5&&l<p*0.5){const drop=p-l;if(!falling||drop>falling.drop)falling={name:n,prev:p,last:l,drop};}}
+
+  const menuName=Object.fromEntries(menu.map(m=>[m.id,m.name]));
+  let vipLost=null;
+  for(const c of customers){const ds=daysSince(c.last_order_at);
+    if((c.total_orders||0)>=5&&ds>=7){if(!vipLost||Number(c.total_spent)>Number(vipLost.total_spent))vipLost={...c,days:ds,fav:menuName[c.favorite_item_id]};}}
+  let newCust=null;
+  for(const c of customers){if((c.total_orders||0)===1&&daysSince(c.last_order_at)<=2){if(!newCust||new Date(c.last_order_at)>new Date(newCust.last_order_at))newCust=c;}}
+  const lapsedCount=customers.filter(c=>daysSince(c.last_order_at)>=7).length;
+
+  const ins=[];
+  if(vipLost)ins.push({priority:100,tone:"alert",icon:"⚠️",title:`${vipLost.name} หายไป ${vipLost.days} วัน`,body:`ลูกค้า VIP — เคยซื้อ ${vipLost.total_orders} ครั้ง รวม ${fmtTHB(vipLost.total_spent)}${vipLost.fav?` · ชอบ ${vipLost.fav}`:""}`,action:"ทักไปทักทาย"});
+  if(deltaPct!==null&&deltaPct<0)ins.push({priority:90,tone:"warn",icon:"📉",title:`ยอดวันนี้ต่ำกว่าเมื่อวาน ${Math.abs(deltaPct)}%`,body:`วันนี้ ${fmtTHB(t.sales)} · เมื่อวาน ${fmtTHB(y.sales)} — ดันเมนูขายดีหรือยิงโปรช่วงพีค`,action:"ดูเมนูขายดี"});
+  if(falling)ins.push({priority:70,tone:"warn",icon:"🍽️",title:`เมนู ${falling.name} ยอดตก`,body:`7 วันก่อนขาย ${falling.prev} จาน เหลือ ${falling.last} จาน — ลองจัดโปรหรือดันขึ้นบนสุด`,action:"จัดโปรเมนูนี้"});
+  if(newCust)ins.push({priority:60,tone:"good",icon:"✨",title:`ลูกค้าใหม่: ${newCust.name}`,body:"เพิ่งสั่งครั้งแรก — ส่งข้อความขอบคุณ ชวนกลับมาซื้อซ้ำ",action:"ส่งข้อความ"});
+  if(!ins.length)ins.push({priority:0,tone:"good",icon:"✅",title:"วันนี้ยังไม่มีเรื่องด่วน",body:"ทุกอย่างปกติดี — โฟกัสรับออเดอร์ได้เลย",action:null});
+  ins.sort((a,b)=>b.priority-a.priority);
+
+  return {today:t,yest:y,deltaPct,spark,topMenu,falling,vipLost,newCust,lapsedCount,insights:ins.slice(0,3)};
+}
+
+// ---------- views ----------
+const app=document.getElementById("app");
+
+function renderLogin(prefill={},err=""){
+  app.innerHTML=`
+  <div class="loginwrap"><div class="loginbox">
+    <div class="brand">Salitdok OS</div>
+    <div class="brandsub">ศูนย์บัญชาการร้านอาหาร</div>
+    <div class="card">
+      ${field("url","Supabase URL","Settings → API → Project URL","https://xxxx.supabase.co",prefill.url)}
+      ${field("key","anon public key","คีย์สาธารณะ ปลอดภัยที่จะใช้ฝั่งแอป","eyJhbGciOi...",prefill.key)}
+      ${field("email","อีเมล","","owner@salitdok.app",prefill.email,"email")}
+      ${field("password","รหัสผ่าน","","••••••••","","password")}
+      <div id="err" class="err ${err?"":"hidden"}">${esc(err)}</div>
+      <button id="go" class="btn">เข้าสู่ระบบ</button>
+    </div>
+    <p class="note">เปิดหน้านี้ผ่าน Safari (เช่นโฮสต์บน GitHub Pages) แล้วล็อกอินด้วย user เจ้าของร้าน · session จะถูกจำไว้ในเครื่องนี้</p>
+  </div></div>`;
+  document.getElementById("go").onclick=doLogin;
+}
+function field(id,label,hint,ph,val="",type="text"){
+  return `<label class="field">
+    <div class="flabel">${label}</div>
+    ${hint?`<div class="fhint">${hint}</div>`:""}
+    <input class="finput" id="f_${id}" type="${type}" placeholder="${ph}" value="${esc(val)}"
+      autocapitalize="none" autocorrect="off" spellcheck="false"/>
+  </label>`;
+}
+
+async function doLogin(){
+  const url=(document.getElementById("f_url").value||"").trim().replace(/\/+$/,"");
+  const key=(document.getElementById("f_key").value||"").trim();
+  const email=(document.getElementById("f_email").value||"").trim();
+  const password=document.getElementById("f_password").value||"";
+  const btn=document.getElementById("go"), errEl=document.getElementById("err");
+  errEl.classList.add("hidden");
+  if(!url||!key||!email||!password){errEl.textContent="กรอกให้ครบทุกช่อง";errEl.classList.remove("hidden");return;}
+  btn.disabled=true;btn.textContent="กำลังเข้าสู่ระบบ…";
+  try{
+    const token=await signIn(url,key,email,password);
+    const s={url,key,email,token};
+    const data=await loadAll(s);
+    localStorage.setItem(LS,JSON.stringify(s));
+    renderDash(data,s);
+  }catch(e){
+    errEl.textContent=e.message;errEl.classList.remove("hidden");
+    btn.disabled=false;btn.textContent="เข้าสู่ระบบ";
+  }
+}
+
+function renderDash(data,s){
+  const f=computeFacts(data);
+  const deltaColor=f.deltaPct===null?BRAND.slate:(f.deltaPct<0?BRAND.down:BRAND.up);
+  const deltaTxt=f.deltaPct===null?"—":`${f.deltaPct<0?"▼":"▲"} ${Math.abs(f.deltaPct)}%`;
+  const sparkMax=Math.max(1,...f.spark.map(x=>x.sales));
+  const dateStr=new Intl.DateTimeFormat("th-TH",{weekday:"long",day:"numeric",month:"long",timeZone:"Asia/Bangkok"}).format(new Date());
+
+  app.innerHTML=`
+  <div class="console">
+    <div class="row">
+      <div><div class="storename">${esc(data.store.name)}</div><div class="datestr">${dateStr}</div></div>
+      <button id="refresh" class="refresh">↻ รีเฟรช</button>
+    </div>
+    <div class="pulse">
+      <div><div class="plabel">ยอดขายวันนี้</div><div class="pnum tnum">${fmtTHB(f.today.sales)}</div></div>
+      <div class="pdelta" style="color:${deltaColor}">${deltaTxt}</div>
+    </div>
+    <div class="psub">${f.today.count} ออเดอร์ · เมื่อวาน ${fmtTHB(f.yest.sales)}</div>
+    <div class="spark">
+      ${f.spark.map(x=>`<div class="bar" style="height:${Math.max(3,(x.sales/sparkMax)*44)}px;background:${x.isToday?BRAND.orange:"#2c355a"}" title="${x.d}: ${fmtTHB(x.sales)}"></div>`).join("")}
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sectitle">🎯 วันนี้ควรทำ</div>
+    ${f.insights.map(actionCard).join("")}
+  </div>
+
+  <div class="grid">
+    ${stat("เมนูขายดี",f.topMenu?f.topMenu.name:"—",f.topMenu?`${f.topMenu.qty} จาน / 14 วัน`:"",BRAND.up)}
+    ${stat("เมนูยอดตก",f.falling?f.falling.name:"ไม่มี",f.falling?`${f.falling.prev}→${f.falling.last} จาน`:"ทุกเมนูยังนิ่ง",BRAND.down)}
+    ${stat("ลูกค้าใหม่",f.newCust?f.newCust.name:"—",f.newCust?"สั่งครั้งแรกเร็ว ๆ นี้":"ยังไม่มีใหม่",BRAND.orange)}
+    ${stat("ลูกค้าหายไป",f.lapsedCount+" คน","ไม่สั่ง ≥ 7 วัน",BRAND.amber)}
+  </div>
+
+  <div class="foot"><button id="logout" class="logout">ออกจากระบบ</button></div>`;
+
+  document.getElementById("refresh").onclick=async()=>{
+    try{const fresh=await loadAll(s);renderDash(fresh,s);}
+    catch(e){if(e.code===401){localStorage.removeItem(LS);renderLogin({url:s.url,key:s.key,email:s.email},"เซสชันหมดอายุ เข้าสู่ระบบใหม่");}}
+  };
+  document.getElementById("logout").onclick=()=>{localStorage.removeItem(LS);renderLogin({url:s.url,key:s.key,email:s.email});};
+}
+
+function actionCard(ins){
+  const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);
+  return `<div class="acard">
+    <div class="abar" style="background:${bar}"></div>
+    <div class="abody">
+      <div class="atop"><span class="aicon">${ins.icon}</span>
+        <div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div></div>
+      </div>
+      ${ins.action?`<button class="abtn">${esc(ins.action)} →</button>`:""}
+    </div>
+  </div>`;
+}
+function stat(label,val,sub,dot){
+  return `<div class="stat">
+    <div class="statlabel"><span class="dot" style="background:${dot}"></span>${label}</div>
+    <div class="statval">${esc(val)}</div><div class="statsub">${esc(sub)}</div>
+  </div>`;
+}
+
+// ---------- boot: resume session ----------
+(async function(){
+  let saved=null; try{saved=JSON.parse(localStorage.getItem(LS)||"null");}catch(e){}
+  if(saved&&saved.token){
+    try{const data=await loadAll(saved);renderDash(data,saved);return;}
+    catch(e){/* token expired or unreachable */ renderLogin({url:saved.url,key:saved.key,email:saved.email});return;}
+  }
+  renderLogin();
+})();
+</script>
+</body>
+</html>
