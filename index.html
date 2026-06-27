@@ -5,22 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Salitdok OS</title>
 <style>
-  :root{
-    --ink:#14182B; --paper:#FAF8F5; --orange:#F2691E;
-    --up:#0E9F6E; --down:#E02424; --amber:#F59E0B; --slate:#5B6472;
-    --line:#E2DDD4; --card:#fff;
-  }
+  :root{--ink:#14182B;--paper:#FAF8F5;--orange:#F2691E;--up:#0E9F6E;--down:#E02424;--amber:#F59E0B;--slate:#5B6472;--line:#E2DDD4;--card:#fff}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sukhumvit Set","Noto Sans Thai",sans-serif;
-    background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sukhumvit Set","Noto Sans Thai",sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
   .tnum{font-variant-numeric:tabular-nums}
   button{font-family:inherit;cursor:pointer;border:none;background:none}
   button:active{transform:scale(.97)}
   input{font-family:inherit}
   .hidden{display:none}
 
-  /* login */
   .loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--ink)}
   .loginbox{width:100%;max-width:380px}
   .brand{color:#fff;font-size:24px;font-weight:800;letter-spacing:-.02em}
@@ -36,19 +30,13 @@
   .err{background:#FDECEC;color:var(--down);font-size:14px;border-radius:12px;padding:8px 12px;margin:2px 0 12px}
   .note{color:#828BA0;font-size:12px;line-height:1.6;margin-top:16px}
 
-  /* shell + nav */
   .content{padding-bottom:96px}
-  .nav{position:fixed;left:0;right:0;bottom:0;height:auto;background:#fff;border-top:1px solid var(--line);
-    display:flex;justify-content:space-around;align-items:flex-end;
-    padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:30}
+  .nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-end;padding:8px 4px calc(8px + env(safe-area-inset-bottom));z-index:30}
   .navbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--slate);font-size:11px;padding:4px 0}
   .navbtn.active{color:var(--ink)}
   .navico{font-size:20px;line-height:1}
-  .fab{flex:0 0 auto;width:58px;height:58px;border-radius:99px;background:var(--orange);color:#fff;
-    font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;
-    margin-top:-22px;box-shadow:0 6px 16px rgba(242,105,30,.45)}
+  .fab{flex:0 0 auto;width:56px;height:56px;border-radius:99px;background:var(--orange);color:#fff;font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;margin:0 2px -20px;box-shadow:0 6px 16px rgba(242,105,30,.45)}
 
-  /* dashboard console */
   .console{padding:24px 20px 26px;background:var(--ink);border-radius:0 0 26px 26px}
   .row{display:flex;align-items:center;justify-content:space-between}
   .storename{color:#fff;font-size:18px;font-weight:800;letter-spacing:-.02em}
@@ -63,7 +51,7 @@
   .bar{flex:1;border-radius:5px 5px 0 0;min-height:3px}
 
   .sec{padding:0 20px;margin-top:24px}
-  .sectitle{font-size:14px;font-weight:800;letter-spacing:-.01em;margin-bottom:12px}
+  .sectitle{font-size:14px;font-weight:800;margin-bottom:12px}
   .acard{background:var(--card);border-radius:16px;overflow:hidden;display:flex;box-shadow:0 1px 3px rgba(20,24,43,.08);margin-bottom:12px}
   .abar{width:5px;flex:none}
   .abody{padding:16px;flex:1}
@@ -71,22 +59,21 @@
   .aicon{font-size:18px;line-height:1}
   .atitle{font-weight:700;font-size:16px;line-height:1.3}
   .adesc{font-size:14px;color:var(--slate);margin-top:4px;line-height:1.55}
-  .abtn{margin-top:12px;background:#FCEEE6;color:var(--orange);font-weight:700;font-size:14px;border-radius:12px;padding:8px 16px}
 
   .grid{padding:0 20px;margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .stat{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(20,24,43,.06)}
+  .stat.wide{grid-column:span 2}
   .statlabel{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--slate)}
   .dot{width:7px;height:7px;border-radius:99px;display:inline-block}
   .statval{font-weight:700;font-size:16px;margin-top:6px;line-height:1.3}
   .statsub{font-size:12px;color:var(--slate);margin-top:2px}
   .footlink{display:block;text-align:center;font-size:14px;color:var(--slate);margin-top:28px}
 
-  /* page header (orders/customers/add) */
   .phead{padding:22px 20px 14px;display:flex;align-items:center;gap:12px}
-  .ptitle{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .ptitle{font-size:22px;font-weight:800;letter-spacing:-.02em;flex:1}
   .iconbtn{width:38px;height:38px;border-radius:99px;background:#fff;border:1px solid var(--line);font-size:18px;color:var(--ink);display:flex;align-items:center;justify-content:center}
+  .addtop{background:var(--ink);color:#fff;border-radius:12px;padding:9px 16px;font-weight:700;font-size:14px}
 
-  /* list cards */
   .ocard{background:var(--card);border-radius:16px;padding:14px 16px;margin:0 20px 10px;box-shadow:0 1px 3px rgba(20,24,43,.06)}
   .ocard .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .oname{font-weight:700;font-size:15px}
@@ -97,18 +84,26 @@
   .otime{font-size:12px;color:var(--slate)}
   .cancel{opacity:.5}
 
-  /* search */
   .search{margin:0 20px 14px}
   .searchin{width:100%;height:46px;border:1px solid var(--line);border-radius:14px;padding:0 14px;font-size:16px;background:#fff;outline:none}
   .searchin:focus{border-color:var(--orange)}
-
-  /* customer rows */
   .crow{width:100%;text-align:left;background:var(--card);border-radius:14px;padding:13px 14px;margin:0 20px 9px;box-shadow:0 1px 3px rgba(20,24,43,.05);display:block}
   .cname{font-weight:700;font-size:15px}
   .cmeta{font-size:12px;color:var(--slate);margin-top:3px;line-height:1.5}
 
-  /* add order */
-  .addwrap{min-height:100vh;background:var(--paper)}
+  .seg{display:flex;gap:6px;margin:0 20px 14px;background:#EFEBE4;border-radius:14px;padding:4px}
+  .segbtn{flex:1;border-radius:11px;padding:9px;font-weight:700;font-size:14px;color:var(--slate)}
+  .segbtn.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+  .mmrow{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:14px;padding:12px 14px;margin:0 20px 9px;box-shadow:0 1px 3px rgba(20,24,43,.05)}
+  .mmrow.off{opacity:.55}
+  .mmmain{flex:1;text-align:left;min-width:0}
+  .mmname{font-weight:700;font-size:15px}
+  .mmsub{font-size:12px;color:var(--slate);margin-top:2px}
+  .toggle{font-size:12px;font-weight:700;border-radius:99px;padding:6px 11px;border:1px solid var(--line);color:var(--slate)}
+  .toggle.on{background:#E7F6EF;color:var(--up);border-color:#bfe6d4}
+  .chev{color:var(--slate);font-size:18px}
+
   .block{margin:0 20px 18px}
   .blocktitle{font-size:13px;font-weight:800;color:var(--slate);margin:0 20px 8px}
   .selbox{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -120,8 +115,9 @@
   .quick{flex:1;background:#F1EEE8;border-radius:12px;padding:11px;font-size:14px;font-weight:600;color:var(--ink);text-align:center}
   .repeatbtn{margin-top:10px;width:100%;background:#FCEEE6;color:var(--orange);font-weight:700;font-size:15px;border-radius:12px;padding:12px}
 
-  .mrow{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:9px}
+  .mrow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:9px}
   .mrow.on{border-color:var(--orange);background:#FFF7F2}
+  .mrowtop{display:flex;align-items:center;justify-content:space-between}
   .mleft{flex:1;min-width:0}
   .mname{font-weight:600;font-size:15px}
   .mprice{font-size:12px;color:var(--slate);margin-top:2px}
@@ -129,22 +125,32 @@
   .step{width:38px;height:38px;border-radius:99px;border:1px solid var(--line);font-size:20px;color:var(--ink);display:flex;align-items:center;justify-content:center;background:#fff}
   .step.plus{background:var(--orange);color:#fff;border-color:var(--orange)}
   .cnt{min-width:18px;text-align:center;font-weight:700;font-size:16px}
+  .rowaddons{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+  .rowaddons:empty{display:none}
+  .achip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;font-size:13px;font-weight:600;color:var(--slate)}
+  .achip.on{background:#FCEEE6;border-color:var(--orange);color:var(--orange)}
 
   .chips{display:flex;gap:8px;flex-wrap:wrap}
   .chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:9px 16px;font-size:14px;font-weight:600;color:var(--slate)}
   .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.sm{padding:7px 13px;font-size:13px}
 
-  .savebar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
-    padding:12px 20px calc(12px + env(safe-area-inset-bottom));z-index:30}
-  .savebtn{width:100%;height:54px;border-radius:16px;background:var(--orange);color:#fff;font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;gap:10px}
+  .savebar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 20px calc(12px + env(safe-area-inset-bottom));z-index:30}
+  .savebtn{width:100%;height:54px;border-radius:16px;background:var(--orange);color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px}
+  .savebtn.dark{background:var(--ink)}
   .savebtn[disabled]{opacity:.45}
+  .delbtn{width:100%;height:48px;border-radius:14px;background:#FDECEC;color:var(--down);font-weight:700;font-size:15px;margin-top:10px}
 
-  .nin{width:100%;height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:#fff;outline:none;margin-top:8px}
+  .nin{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:#fff;outline:none;margin-top:8px}
   .nin:focus{border-color:var(--orange)}
+  .swrow{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+  .swlabel{font-size:15px;font-weight:600}
+  .sw{width:52px;height:30px;border-radius:99px;background:#D7D2C8;position:relative;transition:background .15s}
+  .sw.on{background:var(--up)}
+  .sw .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:99px;background:#fff;transition:left .15s}
+  .sw.on .knob{left:25px}
 
-  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:var(--ink);color:#fff;
-    font-size:14px;font-weight:600;padding:11px 18px;border-radius:99px;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25);
-    opacity:0;transition:opacity .2s}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:var(--ink);color:#fff;font-size:14px;font-weight:600;padding:11px 18px;border-radius:99px;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;transition:opacity .2s;max-width:90%;text-align:center}
   .toast.show{opacity:1}
   .empty{text-align:center;color:var(--slate);font-size:14px;padding:40px 20px;line-height:1.6}
 </style>
@@ -159,380 +165,359 @@ const DAY=86400000, LS="salitdok_session";
 const SRC=[["manual","กรอกเอง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"]];
 const SRC_MAP=Object.fromEntries(SRC);
 
-const state={s:null,data:null,view:"dash",prev:"dash"};
-let draft=null;
+const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items"};
+let draft=null, editingMenu=null, editingAddon=null;
 
-// ---------- helpers ----------
 const bkkDate=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok"}).format(d);
 const fmtTHB=n=>"฿"+Math.round(n||0).toLocaleString("th-TH");
 const daysSince=iso=>iso?Math.floor((Date.now()-new Date(iso).getTime())/DAY):Infinity;
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function jwtSub(t){try{return JSON.parse(atob(t.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).sub;}catch(e){return null;}}
-function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2300);}
+function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2400);}
 function lastSeen(iso){const d=daysSince(iso);return d===0?"วันนี้":d===1?"เมื่อวาน":isFinite(d)?d+" วันก่อน":"—";}
+const val=id=>{const el=document.getElementById(id);return el?el.value:"";};
 
-// ---------- Supabase REST ----------
-async function signIn(url,key,email,password){
-  let res;
-  try{res=await fetch(url+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email,password})});}
-  catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase — ตรวจ Project URL และต้องเปิดผ่าน https");}
-  const d=await res.json();
-  if(!res.ok)throw new Error(d.error_description||d.msg||d.error||"เข้าสู่ระบบไม่สำเร็จ");
-  return d.access_token;
-}
-async function rest(s,path){
-  let res;
-  try{res=await fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});}
-  catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}
-  if(res.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}
-  const d=await res.json();
-  if(!res.ok)throw new Error(d.message||d.hint||"ดึงข้อมูลไม่สำเร็จ");
-  return d;
-}
-async function post(s,path,body,prefer="return=representation"){
-  let res;
-  try{res=await fetch(s.url+"/rest/v1/"+path,{method:"POST",headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer},body:JSON.stringify(body)});}
-  catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}
-  const txt=await res.text();const d=txt?JSON.parse(txt):null;
-  if(!res.ok)throw new Error((d&&(d.message||d.hint))||"บันทึกไม่สำเร็จ");
-  return d;
-}
+// ---------- REST ----------
+async function signIn(url,key,email,password){let r;try{r=await fetch(url+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email,password})});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase — ตรวจ Project URL และเปิดผ่าน https");}const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.msg||d.error||"เข้าสู่ระบบไม่สำเร็จ");return d.access_token;}
+async function rest(s,path){let r;try{r=await fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}const d=await r.json();if(!r.ok)throw new Error(d.message||d.hint||"ดึงข้อมูลไม่สำเร็จ");return d;}
+async function send(s,method,path,body,prefer){let r;try{r=await fetch(s.url+"/rest/v1/"+path,{method,headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer||"return=representation"},body:body?JSON.stringify(body):undefined});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"ทำรายการไม่สำเร็จ");return d;}
+const post=(s,p,b,pr)=>send(s,"POST",p,b,pr);
+const patch=(s,p,b)=>send(s,"PATCH",p,b,"return=minimal");
+const del=(s,p)=>send(s,"DELETE",p,null,"return=minimal");
+
 async function loadAll(s){
   const stores=await rest(s,"stores?select=id,name,timezone&limit=1");
   if(!stores.length)throw new Error("ไม่พบร้าน — ล็อกอินด้วย user เจ้าของร้าน");
-  const store=stores[0];
-  const since=new Date(Date.now()-30*DAY).toISOString();
-  const orders=await rest(s,`orders?select=id,customer_id,net_total,ordered_at,order_items(item_name,quantity)&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);
+  const store=stores[0],since=new Date(Date.now()-30*DAY).toISOString();
+  const orders=await rest(s,`orders?select=id,customer_id,net_total,ordered_at,order_items(item_name,quantity,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);
   const customers=await rest(s,`customers?select=id,name,phone,total_orders,total_spent,last_order_at,favorite_item_id&store_id=eq.${store.id}&order=total_spent.desc`);
   const menu=await rest(s,`menu_items?select=id,name,price,category,sort_order,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
-  return {store,orders,customers,menu};
+  const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${store.id}&order=sort_order.asc`);
+  const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${store.id}`);
+  return {store,orders,customers,menu,addons,links};
 }
-async function fetchRecentOrders(s,storeId){
-  return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity)&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);
-}
-async function fetchLastOrderItems(s,storeId,custId){
-  const rows=await rest(s,`orders?select=ordered_at,order_items(menu_item_id,item_name,unit_price,quantity)&store_id=eq.${storeId}&customer_id=eq.${custId}&status=eq.completed&order=ordered_at.desc&limit=1`);
-  return rows.length?(rows[0].order_items||[]):[];
-}
+async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
+async function fetchLastOrderItems(s,storeId,custId){const rows=await rest(s,`orders?select=ordered_at,order_items(menu_item_id,item_name,unit_price,quantity)&store_id=eq.${storeId}&customer_id=eq.${custId}&status=eq.completed&order=ordered_at.desc&limit=1`);return rows.length?(rows[0].order_items||[]):[];}
 async function reloadData(){state.data=await loadAll(state.s);}
 
-// ---------- Facts Engine ----------
+const menuMap=()=>Object.fromEntries(state.data.menu.map(m=>[m.id,m]));
+const addonMap=()=>Object.fromEntries(state.data.addons.map(a=>[a.id,a]));
+function categories(){return [...new Set(state.data.menu.map(m=>m.category).filter(Boolean))];}
+function addonsForMenu(m){
+  const ids=new Set();
+  for(const l of state.data.links){if(l.menu_item_id===m.id||(l.category&&l.category===m.category))ids.add(l.addon_id);}
+  return state.data.addons.filter(a=>a.is_active!==false&&ids.has(a.id));
+}
+
+// ---------- Facts ----------
 function computeFacts({orders,customers,menu}){
-  const today=bkkDate(new Date()),yest=bkkDate(new Date(Date.now()-DAY));
-  const byDay={};
+  const today=bkkDate(new Date()),yest=bkkDate(new Date(Date.now()-DAY)),byDay={};
   for(const o of orders){const d=bkkDate(new Date(o.ordered_at));(byDay[d]||(byDay[d]={sales:0,count:0}));byDay[d].sales+=Number(o.net_total)||0;byDay[d].count+=1;}
   const t=byDay[today]||{sales:0,count:0},y=byDay[yest]||{sales:0,count:0};
   const deltaPct=y.sales>0?Math.round(((t.sales-y.sales)/y.sales)*100):null;
   const spark=[];for(let i=6;i>=0;i--){const d=bkkDate(new Date(Date.now()-i*DAY));spark.push({d,sales:(byDay[d]&&byDay[d].sales)||0,isToday:d===today});}
-  const cut14=Date.now()-14*DAY,cut7=Date.now()-7*DAY,qty14={},last7={},prev7={};
+  const cut14=Date.now()-14*DAY,cut7=Date.now()-7*DAY,qty14={},last7={},prev7={},addon14={};
   for(const o of orders){const tm=new Date(o.ordered_at).getTime();for(const it of o.order_items||[]){const q=Number(it.quantity)||0;
     if(tm>=cut14)qty14[it.item_name]=(qty14[it.item_name]||0)+q;
-    if(tm>=cut7)last7[it.item_name]=(last7[it.item_name]||0)+q;else if(tm>=cut14)prev7[it.item_name]=(prev7[it.item_name]||0)+q;}}
+    if(tm>=cut7)last7[it.item_name]=(last7[it.item_name]||0)+q;else if(tm>=cut14)prev7[it.item_name]=(prev7[it.item_name]||0)+q;
+    if(tm>=cut14)for(const ad of it.order_item_addons||[])addon14[ad.name]=(addon14[ad.name]||0)+(Number(ad.quantity)||0);}}
   let topMenu=null;for(const[n,q]of Object.entries(qty14))if(!topMenu||q>topMenu.qty)topMenu={name:n,qty:q};
   let falling=null;for(const[n,p]of Object.entries(prev7)){const l=last7[n]||0;if(p>=5&&l<p*0.5){const drop=p-l;if(!falling||drop>falling.drop)falling={name:n,prev:p,last:l,drop};}}
+  let topAddon=null;for(const[n,q]of Object.entries(addon14))if(!topAddon||q>topAddon.qty)topAddon={name:n,qty:q};
   const menuName=Object.fromEntries(menu.map(m=>[m.id,m.name]));
   let vipLost=null;for(const c of customers){const ds=daysSince(c.last_order_at);if((c.total_orders||0)>=5&&ds>=7){if(!vipLost||Number(c.total_spent)>Number(vipLost.total_spent))vipLost={...c,days:ds,fav:menuName[c.favorite_item_id]};}}
   let newCust=null;for(const c of customers){if((c.total_orders||0)===1&&daysSince(c.last_order_at)<=2){if(!newCust||new Date(c.last_order_at)>new Date(newCust.last_order_at))newCust=c;}}
   const lapsedCount=customers.filter(c=>daysSince(c.last_order_at)>=7).length;
   const ins=[];
-  if(vipLost)ins.push({priority:100,tone:"alert",icon:"⚠️",title:`${vipLost.name} หายไป ${vipLost.days} วัน`,body:`ลูกค้า VIP — เคยซื้อ ${vipLost.total_orders} ครั้ง รวม ${fmtTHB(vipLost.total_spent)}${vipLost.fav?` · ชอบ ${vipLost.fav}`:""}`,action:"ทักไปทักทาย"});
-  if(deltaPct!==null&&deltaPct<0)ins.push({priority:90,tone:"warn",icon:"📉",title:`ยอดวันนี้ต่ำกว่าเมื่อวาน ${Math.abs(deltaPct)}%`,body:`วันนี้ ${fmtTHB(t.sales)} · เมื่อวาน ${fmtTHB(y.sales)} — ดันเมนูขายดีหรือยิงโปรช่วงพีค`,action:null});
-  if(falling)ins.push({priority:70,tone:"warn",icon:"🍽️",title:`เมนู ${falling.name} ยอดตก`,body:`7 วันก่อนขาย ${falling.prev} จาน เหลือ ${falling.last} จาน`,action:null});
-  if(newCust)ins.push({priority:60,tone:"good",icon:"✨",title:`ลูกค้าใหม่: ${newCust.name}`,body:"เพิ่งสั่งครั้งแรก — ส่งข้อความขอบคุณ ชวนกลับมา",action:null});
-  if(!ins.length)ins.push({priority:0,tone:"good",icon:"✅",title:"วันนี้ยังไม่มีเรื่องด่วน",body:"ทุกอย่างปกติดี — โฟกัสรับออเดอร์ได้เลย",action:null});
-  ins.sort((a,b)=>b.priority-a.priority);
-  return {today:t,yest:y,deltaPct,spark,topMenu,falling,vipLost,newCust,lapsedCount,insights:ins.slice(0,3)};
+  if(vipLost)ins.push({tone:"alert",icon:"⚠️",title:`${vipLost.name} หายไป ${vipLost.days} วัน`,body:`ลูกค้า VIP — ซื้อ ${vipLost.total_orders} ครั้ง รวม ${fmtTHB(vipLost.total_spent)}${vipLost.fav?` · ชอบ ${vipLost.fav}`:""}`});
+  if(deltaPct!==null&&deltaPct<0)ins.push({tone:"warn",icon:"📉",title:`ยอดวันนี้ต่ำกว่าเมื่อวาน ${Math.abs(deltaPct)}%`,body:`วันนี้ ${fmtTHB(t.sales)} · เมื่อวาน ${fmtTHB(y.sales)}`});
+  if(falling)ins.push({tone:"warn",icon:"🍽️",title:`เมนู ${falling.name} ยอดตก`,body:`7 วันก่อน ${falling.prev} จาน เหลือ ${falling.last} จาน`});
+  if(newCust)ins.push({tone:"good",icon:"✨",title:`ลูกค้าใหม่: ${newCust.name}`,body:"เพิ่งสั่งครั้งแรก — ชวนกลับมาซื้อซ้ำ"});
+  if(!ins.length)ins.push({tone:"good",icon:"✅",title:"วันนี้ยังไม่มีเรื่องด่วน",body:"ทุกอย่างปกติดี"});
+  return {today:t,yest:y,deltaPct,spark,topMenu,falling,topAddon,vipLost,newCust,lapsedCount,insights:ins.slice(0,3)};
 }
 
 const app=document.getElementById("app");
-const menuMap=()=>Object.fromEntries(state.data.menu.map(m=>[m.id,m]));
 
-// ====================================================
-// LOGIN
-// ====================================================
+// ---------- login ----------
 function renderLogin(prefill={},err=""){
-  app.innerHTML=`<div class="loginwrap"><div class="loginbox">
-    <div class="brand">Salitdok OS</div><div class="brandsub">ศูนย์บัญชาการร้านอาหาร</div>
-    <div class="card">
-      ${field("url","Supabase URL","Settings → API → Project URL","https://xxxx.supabase.co",prefill.url)}
-      ${field("key","anon public key","คีย์สาธารณะ ปลอดภัยที่จะใช้ฝั่งแอป","eyJhbGciOi...",prefill.key)}
-      ${field("email","อีเมล","","owner@salitdok.app",prefill.email,"email")}
-      ${field("password","รหัสผ่าน","","••••••••","","password")}
-      <div id="err" class="err ${err?"":"hidden"}">${esc(err)}</div>
-      <button id="go" class="btn">เข้าสู่ระบบ</button>
-    </div>
-    <p class="note">เปิดผ่าน Safari (เช่น GitHub Pages) แล้วล็อกอินด้วย user เจ้าของร้าน · session จะถูกจำไว้</p>
-  </div></div>`;
+  app.innerHTML=`<div class="loginwrap"><div class="loginbox"><div class="brand">Salitdok OS</div><div class="brandsub">ศูนย์บัญชาการร้านอาหาร</div>
+    <div class="card">${field("url","Supabase URL","Settings → API → Project URL","https://xxxx.supabase.co",prefill.url)}${field("key","anon public key","คีย์สาธารณะ ปลอดภัยที่จะใช้ฝั่งแอป","eyJhbGciOi...",prefill.key)}${field("email","อีเมล","","owner@salitdok.app",prefill.email,"email")}${field("password","รหัสผ่าน","","••••••••","","password")}
+    <div id="err" class="err ${err?"":"hidden"}">${esc(err)}</div><button id="go" class="btn">เข้าสู่ระบบ</button></div>
+    <p class="note">เปิดผ่าน Safari (เช่น GitHub Pages) แล้วล็อกอินด้วย user เจ้าของร้าน</p></div></div>`;
   document.getElementById("go").onclick=doLogin;
 }
-function field(id,label,hint,ph,val="",type="text"){
-  return `<label class="field"><div class="flabel">${label}</div>${hint?`<div class="fhint">${hint}</div>`:""}
-    <input class="finput" id="f_${id}" type="${type}" placeholder="${ph}" value="${esc(val)}" autocapitalize="none" autocorrect="off" spellcheck="false"/></label>`;
-}
-async function doLogin(){
-  const url=(val("f_url")).trim().replace(/\/+$/,""),key=val("f_key").trim(),email=val("f_email").trim(),password=val("f_password");
-  const btn=document.getElementById("go"),e=document.getElementById("err");e.classList.add("hidden");
-  if(!url||!key||!email||!password){e.textContent="กรอกให้ครบทุกช่อง";e.classList.remove("hidden");return;}
-  btn.disabled=true;btn.textContent="กำลังเข้าสู่ระบบ…";
-  try{
-    const token=await signIn(url,key,email,password);const s={url,key,email,token};
-    state.s=s;await reloadData();localStorage.setItem(LS,JSON.stringify(s));navigate("dash");
-  }catch(err){e.textContent=err.message;e.classList.remove("hidden");btn.disabled=false;btn.textContent="เข้าสู่ระบบ";}
-}
-const val=id=>{const el=document.getElementById(id);return el?el.value:"";};
+function field(id,label,hint,ph,v="",type="text"){return `<label class="field"><div class="flabel">${label}</div>${hint?`<div class="fhint">${hint}</div>`:""}<input class="finput" id="f_${id}" type="${type}" placeholder="${ph}" value="${esc(v)}" autocapitalize="none" autocorrect="off" spellcheck="false"/></label>`;}
+async function doLogin(){const url=val("f_url").trim().replace(/\/+$/,""),key=val("f_key").trim(),email=val("f_email").trim(),password=val("f_password");const btn=document.getElementById("go"),e=document.getElementById("err");e.classList.add("hidden");if(!url||!key||!email||!password){e.textContent="กรอกให้ครบทุกช่อง";e.classList.remove("hidden");return;}btn.disabled=true;btn.textContent="กำลังเข้าสู่ระบบ…";try{const token=await signIn(url,key,email,password);state.s={url,key,email,token};await reloadData();localStorage.setItem(LS,JSON.stringify(state.s));navigate("dash");}catch(err){e.textContent=err.message;e.classList.remove("hidden");btn.disabled=false;btn.textContent="เข้าสู่ระบบ";}}
 
-// ====================================================
-// SHELL + NAV
-// ====================================================
-function shell(active,inner){
-  return `<div class="content">${inner}</div>
-  <div class="nav">
-    <button class="navbtn ${active==="dash"?"active":""}" data-nav="dash"><span class="navico">🏠</span>หน้าหลัก</button>
-    <button class="navbtn ${active==="orders"?"active":""}" data-nav="orders"><span class="navico">🧾</span>ออเดอร์</button>
-    <button class="fab" data-nav="add">＋</button>
-    <button class="navbtn ${active==="customers"?"active":""}" data-nav="customers"><span class="navico">👥</span>ลูกค้า</button>
-  </div>`;
-}
+// ---------- shell ----------
+function shell(active,inner){return `<div class="content">${inner}</div><div class="nav">
+  <button class="navbtn ${active==="dash"?"active":""}" data-nav="dash"><span class="navico">🏠</span>หน้าหลัก</button>
+  <button class="navbtn ${active==="orders"?"active":""}" data-nav="orders"><span class="navico">🧾</span>ออเดอร์</button>
+  <button class="fab" data-nav="add">＋</button>
+  <button class="navbtn ${active==="customers"?"active":""}" data-nav="customers"><span class="navico">👥</span>ลูกค้า</button>
+  <button class="navbtn ${active==="menu"?"active":""}" data-nav="menu"><span class="navico">🍜</span>เมนู</button>
+</div>`;}
 function wireNav(){document.querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>navigate(b.dataset.nav));}
 
 async function navigate(v){
   if(v==="add"){openAdd();return;}
-  state.prev=state.view==="add"?state.prev:state.view;
+  if(state.view!=="add")state.prev=state.view;
   state.view=v;
-  if(v==="orders"){
-    app.innerHTML=shell("orders",`<div class="phead"><div class="ptitle">ออเดอร์ล่าสุด</div></div><div class="empty">กำลังโหลด…</div>`);wireNav();
-    try{const list=await fetchRecentOrders(state.s,state.data.store.id);renderOrders(list);}catch(e){toast(e.message);}
-    return;
-  }
+  if(v==="orders"){app.innerHTML=shell("orders",`<div class="phead"><div class="ptitle">ออเดอร์ล่าสุด</div></div><div class="empty">กำลังโหลด…</div>`);wireNav();try{renderOrders(await fetchRecentOrders(state.s,state.data.store.id));}catch(e){toast(e.message);}return;}
   if(v==="customers"){renderCustomers();return;}
+  if(v==="menu"){renderMenu();return;}
   renderDash();
 }
 
-// ====================================================
-// DASHBOARD
-// ====================================================
+// ---------- dashboard ----------
 function renderDash(){
   const f=computeFacts(state.data),d=state.data;
   const dc=f.deltaPct===null?BRAND.slate:(f.deltaPct<0?BRAND.down:BRAND.up);
   const dt=f.deltaPct===null?"—":`${f.deltaPct<0?"▼":"▲"} ${Math.abs(f.deltaPct)}%`;
   const mx=Math.max(1,...f.spark.map(x=>x.sales));
   const dateStr=new Intl.DateTimeFormat("th-TH",{weekday:"long",day:"numeric",month:"long",timeZone:"Asia/Bangkok"}).format(new Date());
-  const inner=`
-    <div class="console">
-      <div class="row"><div><div class="storename">${esc(d.store.name)}</div><div class="datestr">${dateStr}</div></div>
-        <button id="refresh" class="refresh">↻ รีเฟรช</button></div>
-      <div class="pulse"><div><div class="plabel">ยอดขายวันนี้</div><div class="pnum tnum">${fmtTHB(f.today.sales)}</div></div>
-        <div class="pdelta" style="color:${dc}">${dt}</div></div>
+  app.innerHTML=shell("dash",`
+    <div class="console"><div class="row"><div><div class="storename">${esc(d.store.name)}</div><div class="datestr">${dateStr}</div></div><button id="refresh" class="refresh">↻ รีเฟรช</button></div>
+      <div class="pulse"><div><div class="plabel">ยอดขายวันนี้</div><div class="pnum tnum">${fmtTHB(f.today.sales)}</div></div><div class="pdelta" style="color:${dc}">${dt}</div></div>
       <div class="psub">${f.today.count} ออเดอร์ · เมื่อวาน ${fmtTHB(f.yest.sales)}</div>
-      <div class="spark">${f.spark.map(x=>`<div class="bar" style="height:${Math.max(3,(x.sales/mx)*44)}px;background:${x.isToday?BRAND.orange:"#2c355a"}"></div>`).join("")}</div>
-    </div>
+      <div class="spark">${f.spark.map(x=>`<div class="bar" style="height:${Math.max(3,(x.sales/mx)*44)}px;background:${x.isToday?BRAND.orange:"#2c355a"}"></div>`).join("")}</div></div>
     <div class="sec"><div class="sectitle">🎯 วันนี้ควรทำ</div>${f.insights.map(actionCard).join("")}</div>
     <div class="grid">
       ${stat("เมนูขายดี",f.topMenu?f.topMenu.name:"—",f.topMenu?`${f.topMenu.qty} จาน / 14 วัน`:"",BRAND.up)}
       ${stat("เมนูยอดตก",f.falling?f.falling.name:"ไม่มี",f.falling?`${f.falling.prev}→${f.falling.last} จาน`:"ทุกเมนูยังนิ่ง",BRAND.down)}
       ${stat("ลูกค้าใหม่",f.newCust?f.newCust.name:"—",f.newCust?"สั่งครั้งแรกเร็ว ๆ นี้":"ยังไม่มีใหม่",BRAND.orange)}
       ${stat("ลูกค้าหายไป",f.lapsedCount+" คน","ไม่สั่ง ≥ 7 วัน",BRAND.amber)}
+      ${stat("Add-on ขายดี",f.topAddon?f.topAddon.name:"ยังไม่มี",f.topAddon?`${f.topAddon.qty} ครั้ง / 14 วัน`:"เพิ่ม add-on ในแท็บเมนู",BRAND.ink,true)}
     </div>
-    <a class="footlink" id="logout">ออกจากระบบ</a>`;
-  app.innerHTML=shell("dash",inner);wireNav();
-  document.getElementById("refresh").onclick=async()=>{try{await reloadData();renderDash();toast("อัปเดตแล้ว");}catch(e){if(e.code===401)doLogout("เซสชันหมดอายุ");else toast(e.message);}};
+    <a class="footlink" id="logout">ออกจากระบบ</a>`);
+  wireNav();
+  document.getElementById("refresh").onclick=async()=>{try{await reloadData();renderDash();toast("อัปเดตแล้ว");}catch(e){e.code===401?doLogout("เซสชันหมดอายุ"):toast(e.message);}};
   document.getElementById("logout").onclick=()=>doLogout();
 }
-function actionCard(ins){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);
-  return `<div class="acard"><div class="abar" style="background:${bar}"></div><div class="abody">
-    <div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div></div></div>
-    ${ins.action?`<button class="abtn">${esc(ins.action)} →</button>`:""}</div></div>`;}
-function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span class="dot" style="background:${d}"></span>${l}</div><div class="statval">${esc(v)}</div><div class="statsub">${esc(s)}</div></div>`;}
+function actionCard(ins){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<div class="acard"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div></div></div></div></div>`;}
+function stat(l,v,s,d,wide){return `<div class="stat ${wide?"wide":""}"><div class="statlabel"><span class="dot" style="background:${d}"></span>${l}</div><div class="statval">${esc(v)}</div><div class="statsub">${esc(s)}</div></div>`;}
 
-// ====================================================
-// ORDERS LIST
-// ====================================================
-function srcBadge(src){const color=src==="grab"?"#00B14F":src==="lineman"?"#06C755":src==="shopee"?"#EE4D2D":"#6B7280";
-  return `<span class="badge" style="background:${color}22;color:${color}">${SRC_MAP[src]||src}</span>`;}
+// ---------- orders ----------
+function srcBadge(src){const c=src==="grab"?"#00B14F":src==="lineman"?"#06C755":src==="shopee"?"#EE4D2D":"#6B7280";return `<span class="badge" style="background:${c}22;color:${c}">${SRC_MAP[src]||src}</span>`;}
 function renderOrders(list){
   const body=list.length?list.map(o=>{
-    const items=(o.order_items||[]).map(i=>`${esc(i.item_name)}×${i.quantity}`).join(", ")||"—";
+    const items=(o.order_items||[]).map(i=>{const ad=(i.order_item_addons||[]).map(a=>"+"+a.name).join(" ");return `${esc(i.item_name)}×${i.quantity}${ad?` <span style="color:#9aa0ab">(${esc(ad)})</span>`:""}`;}).join("<br>")||"—";
     const time=new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(o.ordered_at));
-    const name=o.customers?o.customers.name:"ลูกค้าทั่วไป";
-    return `<div class="ocard ${o.status==="cancelled"?"cancel":""}">
-      <div class="top"><div class="oname">${esc(name)}</div><div class="ototal tnum">${fmtTHB(o.net_total)}</div></div>
-      <div class="oitems">${items}</div>
-      <div class="ometa">${srcBadge(o.source)}${o.status==="cancelled"?`<span class="badge" style="background:#eee;color:#888">ยกเลิก</span>`:""}<span class="otime">${time}</span></div>
-    </div>`;}).join(""):`<div class="empty">ยังไม่มีออเดอร์<br>กดปุ่ม ＋ เพื่อเพิ่มออเดอร์แรก</div>`;
+    return `<div class="ocard ${o.status==="cancelled"?"cancel":""}"><div class="top"><div class="oname">${esc(o.customers?o.customers.name:"ลูกค้าทั่วไป")}</div><div class="ototal tnum">${fmtTHB(o.net_total)}</div></div><div class="oitems">${items}</div><div class="ometa">${srcBadge(o.source)}${o.status==="cancelled"?`<span class="badge" style="background:#eee;color:#888">ยกเลิก</span>`:""}<span class="otime">${time}</span></div></div>`;}).join(""):`<div class="empty">ยังไม่มีออเดอร์<br>กดปุ่ม ＋ เพื่อเพิ่มออเดอร์แรก</div>`;
   app.innerHTML=shell("orders",`<div class="phead"><div class="ptitle">ออเดอร์ล่าสุด</div></div>${body}`);wireNav();
 }
 
-// ====================================================
-// CUSTOMERS
-// ====================================================
+// ---------- customers ----------
 function renderCustomers(filter=""){
-  const mm=menuMap();
-  const all=state.data.customers;
-  const q=filter.trim().toLowerCase();
-  const list=q?all.filter(c=>(c.name||"").toLowerCase().includes(q)):all;
-  const rows=list.length?list.map(c=>{
-    const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;
-    return `<button class="crow" data-cid="${c.id}">
-      <div class="cname">${esc(c.name)}</div>
-      <div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div>
-    </button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
-  app.innerHTML=shell("customers",`<div class="phead"><div class="ptitle">ลูกค้า</div></div>
-    <div class="search"><input id="csearch" class="searchin" placeholder="ค้นหาชื่อลูกค้า…" autocapitalize="none" autocorrect="off" value="${esc(filter)}"/></div>
-    <div id="clist">${rows}</div>`);wireNav();
+  const mm=menuMap(),all=state.data.customers;
+  const rowsHTML=l=>l.length?l.map(c=>{const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;return `<button class="crow" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
+  const f=filter.trim().toLowerCase();
+  app.innerHTML=shell("customers",`<div class="phead"><div class="ptitle">ลูกค้า</div></div><div class="search"><input id="csearch" class="searchin" placeholder="ค้นหาชื่อลูกค้า…" autocapitalize="none" value="${esc(filter)}"/></div><div id="clist">${rowsHTML(f?all.filter(c=>(c.name||"").toLowerCase().includes(f)):all)}</div>`);wireNav();
   const si=document.getElementById("csearch");
-  si.oninput=()=>{const v=si.value;const qq=v.trim().toLowerCase();const l=qq?all.filter(c=>(c.name||"").toLowerCase().includes(qq)):all;
-    document.getElementById("clist").innerHTML=l.length?l.map(c=>{const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;
-      return `<button class="crow" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
-    wireCustomerRows();};
+  si.oninput=()=>{const q=si.value.trim().toLowerCase();document.getElementById("clist").innerHTML=rowsHTML(q?all.filter(c=>(c.name||"").toLowerCase().includes(q)):all);wireCustomerRows();};
   wireCustomerRows();
 }
 function wireCustomerRows(){document.querySelectorAll(".crow").forEach(b=>b.onclick=()=>openAdd(b.dataset.cid));}
 
 // ====================================================
-// ADD ORDER (Smart Order)
+// MENU MANAGER
 // ====================================================
-function openAdd(preCustId){
-  draft={customer:{mode:"walkin"},cart:{},source:"manual"};
-  if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}
-  renderAdd();
+function renderMenu(){
+  const seg=state.menuSeg;
+  const inner=`<div class="phead"><div class="ptitle">เมนู</div><button class="addtop" id="addNew">${seg==="items"?"＋ เพิ่มเมนู":"＋ เพิ่ม Add-on"}</button></div>
+    <div class="seg"><button class="segbtn ${seg==="items"?"on":""}" data-seg="items">เมนู</button><button class="segbtn ${seg==="addons"?"on":""}" data-seg="addons">Add-on</button></div>
+    <div id="mlist">${seg==="items"?menuItemsHTML():addonsHTML()}</div>`;
+  app.innerHTML=shell("menu",inner);wireNav();
+  document.querySelectorAll("[data-seg]").forEach(b=>b.onclick=()=>{state.menuSeg=b.dataset.seg;renderMenu();});
+  document.getElementById("addNew").onclick=()=>seg==="items"?renderMenuEdit(null):renderAddonEdit(null);
+  wireMenuList();
 }
+function menuItemsHTML(){
+  if(!state.data.menu.length)return `<div class="empty">ยังไม่มีเมนู — กด “＋ เพิ่มเมนู”</div>`;
+  return state.data.menu.map(m=>`<div class="mmrow ${m.is_active===false?"off":""}">
+    <button class="mmmain" data-edit-menu="${m.id}"><div class="mmname">${esc(m.name)}</div><div class="mmsub">${fmtTHB(m.price)}${m.category?` · ${esc(m.category)}`:""}</div></button>
+    <button class="toggle ${m.is_active===false?"":"on"}" data-toggle-menu="${m.id}">${m.is_active===false?"ปิดขาย":"ขายอยู่"}</button>
+    <span class="chev">›</span></div>`).join("");
+}
+function addonsHTML(){
+  if(!state.data.addons.length)return `<div class="empty">ยังไม่มี Add-on — กด “＋ เพิ่ม Add-on”<br>เช่น ไข่ดาว +10, เพิ่มข้าว +10</div>`;
+  const linkCount=id=>state.data.links.filter(l=>l.addon_id===id).length;
+  return state.data.addons.map(a=>`<div class="mmrow ${a.is_active===false?"off":""}">
+    <button class="mmmain" data-edit-addon="${a.id}"><div class="mmname">${esc(a.name)} <span style="color:${BRAND.orange}">+${fmtTHB(a.price).replace("฿","฿")}</span></div><div class="mmsub">ผูกกับ ${linkCount(a.id)} รายการ</div></button>
+    <button class="toggle ${a.is_active===false?"":"on"}" data-toggle-addon="${a.id}">${a.is_active===false?"ปิด":"เปิด"}</button>
+    <span class="chev">›</span></div>`).join("");
+}
+function wireMenuList(){
+  document.querySelectorAll("[data-edit-menu]").forEach(b=>b.onclick=()=>renderMenuEdit(state.data.menu.find(m=>m.id===b.dataset.editMenu)));
+  document.querySelectorAll("[data-toggle-menu]").forEach(b=>b.onclick=async()=>{const m=state.data.menu.find(x=>x.id===b.dataset.toggleMenu);try{await patch(state.s,`menu_items?id=eq.${m.id}`,{is_active:!(m.is_active!==false)});await reloadData();renderMenu();}catch(e){toast(e.message);}});
+  document.querySelectorAll("[data-edit-addon]").forEach(b=>b.onclick=()=>renderAddonEdit(state.data.addons.find(a=>a.id===b.dataset.editAddon)));
+  document.querySelectorAll("[data-toggle-addon]").forEach(b=>b.onclick=async()=>{const a=state.data.addons.find(x=>x.id===b.dataset.toggleAddon);try{await patch(state.s,`addons?id=eq.${a.id}`,{is_active:!(a.is_active!==false)});await reloadData();renderMenu();}catch(e){toast(e.message);}});
+}
+
+function renderMenuEdit(m){
+  editingMenu=m;const isNew=!m;const cats=categories();
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่มเมนู":"แก้ไขเมนู"}</div></div>
+    <div class="block">
+      <input id="miName" class="nin" placeholder="ชื่อเมนู เช่น ข้าวกะเพราหมูสับ" value="${esc(m?m.name:"")}" autocapitalize="words"/>
+      <input id="miPrice" class="nin" placeholder="ราคา (บาท)" inputmode="decimal" value="${m?Number(m.price):""}"/>
+      <input id="miCat" class="nin" placeholder="หมวดหมู่ เช่น จานเดียว (ไม่ใส่ก็ได้)" list="catlist" value="${esc(m?(m.category||""):"")}"/>
+      <datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
+      <div class="swrow"><div class="swlabel">เปิดขาย</div><button class="sw ${(!m||m.is_active!==false)?"on":""}" id="miActive"><span class="knob"></span></button></div>
+    </div>
+    <div style="height:80px"></div>
+    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มเมนู":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบเมนูนี้</button>`:""}</div></div>`;
+  document.getElementById("back").onclick=()=>renderMenu();
+  let active=(!m||m.is_active!==false);const sw=document.getElementById("miActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
+  document.getElementById("save").onclick=()=>saveMenuItem(active);
+  if(!isNew)document.getElementById("del").onclick=()=>deleteMenuItem(m);
+}
+async function saveMenuItem(active){
+  const name=val("miName").trim(),price=parseFloat(val("miPrice"))||0,category=val("miCat").trim()||null;
+  if(!name){toast("ใส่ชื่อเมนู");return;}
+  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+  try{
+    if(editingMenu)await patch(state.s,`menu_items?id=eq.${editingMenu.id}`,{name,price,category,is_active:active});
+    else{const so=state.data.menu.length+1;await post(state.s,"menu_items",{store_id:state.data.store.id,name,price,category,is_active:active,sort_order:so},"return=minimal");}
+    await reloadData();renderMenu();toast("บันทึกเมนูแล้ว");
+  }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+}
+async function deleteMenuItem(m){
+  try{
+    const used=await rest(state.s,`order_items?select=id&menu_item_id=eq.${m.id}&limit=1`);
+    if(used.length){toast("เมนูนี้มีออเดอร์แล้ว — ใช้ปิดขายแทนการลบ");return;}
+    await del(state.s,`menu_items?id=eq.${m.id}`);
+    await reloadData();renderMenu();toast("ลบเมนูแล้ว");
+  }catch(e){toast(e.message);}
+}
+
+function renderAddonEdit(a){
+  editingAddon=a;const isNew=!a;const cats=categories();
+  const linkedMenus=new Set(state.data.links.filter(l=>a&&l.addon_id===a.id&&l.menu_item_id).map(l=>l.menu_item_id));
+  const linkedCats=new Set(state.data.links.filter(l=>a&&l.addon_id===a.id&&l.category).map(l=>l.category));
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่ม Add-on":"แก้ไข Add-on"}</div></div>
+    <div class="block">
+      <input id="adName" class="nin" placeholder="ชื่อ เช่น ไข่ดาว / เพิ่มข้าว" value="${esc(a?a.name:"")}" autocapitalize="words"/>
+      <input id="adPrice" class="nin" placeholder="ราคาเพิ่ม (บาท)" inputmode="decimal" value="${a?Number(a.price):""}"/>
+      <div class="swrow"><div class="swlabel">เปิดใช้</div><button class="sw ${(!a||a.is_active!==false)?"on":""}" id="adActive"><span class="knob"></span></button></div>
+    </div>
+    <div class="blocktitle">ใช้กับหมวดหมู่ (เลือกได้หลายอัน)</div>
+    <div class="block"><div class="chips" id="catChips">${cats.length?cats.map(c=>`<button class="chip sm ${linkedCats.has(c)?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join(""):`<span class="cmeta">ยังไม่มีหมวดหมู่ — ตั้งหมวดให้เมนูก่อน</span>`}</div></div>
+    <div class="blocktitle">หรือใช้กับเมนูเฉพาะ</div>
+    <div class="block"><div class="chips" id="menuChips">${state.data.menu.map(m=>`<button class="chip sm ${linkedMenus.has(m.id)?"active":""}" data-menu="${m.id}">${esc(m.name)}</button>`).join("")}</div></div>
+    <div style="height:80px"></div>
+    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่ม Add-on":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบ Add-on นี้</button>`:""}</div></div>`;
+  document.getElementById("back").onclick=()=>renderMenu();
+  let active=(!a||a.is_active!==false);const sw=document.getElementById("adActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
+  document.querySelectorAll("#catChips .chip").forEach(c=>c.onclick=()=>c.classList.toggle("active"));
+  document.querySelectorAll("#menuChips .chip").forEach(c=>c.onclick=()=>c.classList.toggle("active"));
+  document.getElementById("save").onclick=()=>saveAddon(active);
+  if(!isNew)document.getElementById("del").onclick=()=>deleteAddon(a);
+}
+async function saveAddon(active){
+  const name=val("adName").trim(),price=parseFloat(val("adPrice"))||0;
+  if(!name){toast("ใส่ชื่อ Add-on");return;}
+  const cats=[...document.querySelectorAll('#catChips .chip.active')].map(c=>c.dataset.cat);
+  const menus=[...document.querySelectorAll('#menuChips .chip.active')].map(c=>c.dataset.menu);
+  if(!cats.length&&!menus.length){toast("เลือกอย่างน้อย 1 หมวดหมู่หรือ 1 เมนูที่จะใช้ add-on นี้");return;}
+  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+  try{
+    const sid=state.data.store.id;let addonId;
+    if(editingAddon){await patch(state.s,`addons?id=eq.${editingAddon.id}`,{name,price,is_active:active});addonId=editingAddon.id;await del(state.s,`addon_links?addon_id=eq.${addonId}`);}
+    else{const r=await post(state.s,"addons",{store_id:sid,name,price,is_active:active,sort_order:state.data.addons.length+1},"return=representation");addonId=r[0].id;}
+    const links=[...cats.map(c=>({store_id:sid,addon_id:addonId,category:c,menu_item_id:null})),...menus.map(m=>({store_id:sid,addon_id:addonId,menu_item_id:m,category:null}))];
+    if(links.length)await post(state.s,"addon_links",links,"return=minimal");
+    await reloadData();renderMenu();toast("บันทึก Add-on แล้ว");
+  }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+}
+async function deleteAddon(a){try{await del(state.s,`addons?id=eq.${a.id}`);await reloadData();renderMenu();toast("ลบ Add-on แล้ว");}catch(e){toast(e.message);}}
+
+// ====================================================
+// ADD ORDER
+// ====================================================
+function openAdd(preCustId){draft={customer:{mode:"walkin"},cart:{},source:"manual"};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
 function renderAdd(){
   const menu=state.data.menu.filter(m=>m.is_active!==false);
-  app.innerHTML=`<div class="addwrap">
-    <div class="phead"><button class="iconbtn" id="closeAdd">✕</button><div class="ptitle">เพิ่มออเดอร์</div></div>
-
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="closeAdd">✕</button><div class="ptitle">เพิ่มออเดอร์</div></div>
     <div class="blocktitle">ลูกค้า</div>
-    <div class="block">
-      <input id="custSearch" class="searchin" placeholder="พิมพ์ชื่อลูกค้า…" autocapitalize="none" autocorrect="off"/>
-      <div id="custResults" class="miniresults"></div>
-      <div class="quickrow">
-        <button class="quick" id="qWalkin">ลูกค้าทั่วไป</button>
-        <button class="quick" id="qNew">＋ ลูกค้าใหม่</button>
-      </div>
-      <div id="custSelected" style="margin-top:10px"></div>
-    </div>
-
+    <div class="block"><input id="custSearch" class="searchin" placeholder="พิมพ์ชื่อลูกค้า…" autocapitalize="none"/><div id="custResults" class="miniresults"></div>
+      <div class="quickrow"><button class="quick" id="qWalkin">ลูกค้าทั่วไป</button><button class="quick" id="qNew">＋ ลูกค้าใหม่</button></div>
+      <div id="custSelected" style="margin-top:10px"></div></div>
     <div class="blocktitle">เมนู</div>
-    <div class="block" id="menuList">
-      ${menu.map(m=>`<div class="mrow" id="row_${m.id}">
-        <div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(m.price)}</div></div>
-        <div class="stepper">
-          <button class="step minus" data-id="${m.id}" data-dir="-1">−</button>
-          <span class="cnt" id="cnt_${m.id}">0</span>
-          <button class="step plus" data-id="${m.id}" data-dir="1">+</button>
-        </div></div>`).join("")}
-    </div>
-
+    <div class="block" id="menuList">${menu.map(m=>`<div class="mrow" id="row_${m.id}"><div class="mrowtop"><div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(m.price)}</div></div>
+      <div class="stepper"><button class="step minus" data-id="${m.id}" data-dir="-1">−</button><span class="cnt" id="cnt_${m.id}">0</span><button class="step plus" data-id="${m.id}" data-dir="1">+</button></div></div>
+      <div class="rowaddons" id="ad_${m.id}"></div></div>`).join("")||`<div class="empty">ยังไม่มีเมนูที่เปิดขาย — ไปเพิ่มที่แท็บเมนู</div>`}</div>
     <div class="blocktitle">ช่องทาง</div>
-    <div class="block"><div class="chips" id="srcChips">
-      ${SRC.map(([k,label])=>`<button class="chip ${k==="manual"?"active":""}" data-src="${k}">${label}</button>`).join("")}
-    </div></div>
-
+    <div class="block"><div class="chips" id="srcChips">${SRC.map(([k,l])=>`<button class="chip ${k==="manual"?"active":""}" data-src="${k}">${l}</button>`).join("")}</div></div>
     <div style="height:90px"></div>
-    <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button></div>
-  </div>`;
-
+    <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button></div></div>`;
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
-  // menu steppers
-  document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{
-    const id=b.dataset.id,dir=Number(b.dataset.dir),m=state.data.menu.find(x=>x.id===id);
-    const cur=draft.cart[id]?draft.cart[id].qty:0;const next=Math.max(0,cur+dir);
-    if(next===0)delete draft.cart[id];else draft.cart[id]={name:m.name,price:Number(m.price),qty:next};
-    syncMenu();
-  });
-  // source chips
-  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{
-    draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
-  // customer search
+  document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
+  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
   const cs=document.getElementById("custSearch");
-  cs.oninput=()=>{const q=cs.value.trim().toLowerCase();const res=document.getElementById("custResults");
-    if(!q){res.innerHTML="";return;}
-    const l=state.data.customers.filter(c=>(c.name||"").toLowerCase().includes(q)).slice(0,6);
-    res.innerHTML=l.map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("");
-    res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));
-  };
+  cs.oninput=()=>{const q=cs.value.trim().toLowerCase(),res=document.getElementById("custResults");if(!q){res.innerHTML="";return;}res.innerHTML=state.data.customers.filter(c=>(c.name||"").toLowerCase().includes(q)).slice(0,6).map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("");res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));};
   document.getElementById("qWalkin").onclick=()=>{draft.customer={mode:"walkin"};document.getElementById("custResults").innerHTML="";cs.value="";renderSelected();};
   document.getElementById("qNew").onclick=()=>{draft.customer={mode:"new"};document.getElementById("custResults").innerHTML="";renderSelected(cs.value.trim());};
-
-  renderSelected();
-  syncMenu();
+  renderSelected();syncMenu();
 }
-function selectExisting(cid){const c=state.data.customers.find(x=>x.id===cid);draft.customer={mode:"existing",id:c.id,name:c.name,c};
-  document.getElementById("custResults").innerHTML="";document.getElementById("custSearch").value="";renderSelected();}
+function selectExisting(cid){const c=state.data.customers.find(x=>x.id===cid);draft.customer={mode:"existing",id:c.id,name:c.name,c};document.getElementById("custResults").innerHTML="";document.getElementById("custSearch").value="";renderSelected();}
 function renderSelected(prefillName=""){
-  const box=document.getElementById("custSelected");const cu=draft.customer;
+  const box=document.getElementById("custSelected"),cu=draft.customer;
   if(cu.mode==="walkin"){box.innerHTML=`<div class="selbox"><div class="selrow"><div><b>ลูกค้าทั่วไป</b><div class="cmeta">ไม่บันทึกชื่อ</div></div></div></div>`;return;}
-  if(cu.mode==="new"){box.innerHTML=`<div class="selbox"><div class="selrow"><b>ลูกค้าใหม่</b></div>
-    <input id="newName" class="nin" placeholder="ชื่อลูกค้า" value="${esc(prefillName)}" autocapitalize="words"/>
-    <input id="newPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี)" inputmode="tel"/></div>`;return;}
-  // existing
+  if(cu.mode==="new"){box.innerHTML=`<div class="selbox"><div class="selrow"><b>ลูกค้าใหม่</b></div><input id="newName" class="nin" placeholder="ชื่อลูกค้า" value="${esc(prefillName)}" autocapitalize="words"/><input id="newPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี)" inputmode="tel"/></div>`;return;}
   const c=cu.c,fav=c.favorite_item_id&&menuMap()[c.favorite_item_id]?menuMap()[c.favorite_item_id].name:null;
-  box.innerHTML=`<div class="selbox">
-    <div class="selrow"><div><b>${esc(c.name)}</b><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></div>
-      <button class="link" id="changeCust">เปลี่ยน</button></div>
-    ${(c.total_orders||0)>0?`<button class="repeatbtn" id="repeatBtn">⟳ สั่งเหมือนเดิม (เมนูล่าสุด)</button>`:""}</div>`;
+  box.innerHTML=`<div class="selbox"><div class="selrow"><div><b>${esc(c.name)}</b><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></div><button class="link" id="changeCust">เปลี่ยน</button></div>${(c.total_orders||0)>0?`<button class="repeatbtn" id="repeatBtn">⟳ สั่งเหมือนเดิม (เมนูล่าสุด)</button>`:""}</div>`;
   document.getElementById("changeCust").onclick=()=>{draft.customer={mode:"walkin"};renderSelected();};
   const rb=document.getElementById("repeatBtn");if(rb)rb.onclick=loadRepeat;
 }
 async function loadRepeat(){
   const rb=document.getElementById("repeatBtn");rb.textContent="กำลังดึงเมนูล่าสุด…";
-  try{
-    const items=await fetchLastOrderItems(state.s,state.data.store.id,draft.customer.id);
-    const mm=menuMap();draft.cart={};
-    for(const it of items){if(!it.menu_item_id)continue;const m=mm[it.menu_item_id];
-      draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?Number(m.price):Number(it.unit_price),qty:Number(it.quantity)||1};}
-    syncMenu();rb.textContent="⟳ ใส่เมนูล่าสุดให้แล้ว";
-    if(!items.length)toast("ลูกค้านี้ยังไม่มีออเดอร์ก่อนหน้า");
+  try{const items=await fetchLastOrderItems(state.s,state.data.store.id,draft.customer.id),mm=menuMap();draft.cart={};
+    for(const it of items){if(!it.menu_item_id)continue;const m=mm[it.menu_item_id];if(m&&m.is_active===false)continue;draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?Number(m.price):Number(it.unit_price),qty:Number(it.quantity)||1,addons:{}};}
+    syncMenu();rb.textContent="⟳ ใส่เมนูล่าสุดให้แล้ว";if(!items.length)toast("ลูกค้านี้ยังไม่มีออเดอร์ก่อนหน้า");
   }catch(e){toast(e.message);rb.textContent="⟳ สั่งเหมือนเดิม (เมนูล่าสุด)";}
 }
 function syncMenu(){
   let total=0,count=0;
-  for(const m of state.data.menu){const q=draft.cart[m.id]?draft.cart[m.id].qty:0;
+  for(const m of state.data.menu){
+    const e=draft.cart[m.id],q=e?e.qty:0;
     const cnt=document.getElementById("cnt_"+m.id);if(cnt)cnt.textContent=q;
     const row=document.getElementById("row_"+m.id);if(row)row.classList.toggle("on",q>0);
-    if(q>0){total+=draft.cart[m.id].price*q;count+=q;}}
+    const adbox=document.getElementById("ad_"+m.id);
+    if(adbox){
+      const avail=q>0?addonsForMenu(m):[];
+      adbox.innerHTML=avail.map(a=>`<button class="achip ${e&&e.addons[a.id]?"on":""}" data-mid="${m.id}" data-aid="${a.id}">+${esc(a.name)} ฿${Math.round(a.price)}</button>`).join("");
+      adbox.querySelectorAll(".achip").forEach(ch=>ch.onclick=()=>{const ee=draft.cart[ch.dataset.mid];if(!ee)return;const a=addonMap()[ch.dataset.aid];if(ee.addons[ch.dataset.aid])delete ee.addons[ch.dataset.aid];else ee.addons[ch.dataset.aid]={name:a.name,price:Number(a.price)};syncMenu();});
+    }
+    if(q>0){const adSum=Object.values(e.addons).reduce((x,a)=>x+a.price,0);total+=(e.price+adSum)*q;count+=q;}
+  }
   const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel");
-  if(count>0){btn.disabled=false;lbl.textContent=`บันทึกออเดอร์ · ${count} รายการ · ${fmtTHB(total)}`;}
-  else{btn.disabled=true;lbl.textContent="เลือกเมนูก่อน";}
+  if(count>0){btn.disabled=false;lbl.textContent=`บันทึกออเดอร์ · ${count} รายการ · ${fmtTHB(total)}`;}else{btn.disabled=true;lbl.textContent="เลือกเมนูก่อน";}
   btn.onclick=saveOrder;
 }
 async function saveOrder(){
   const entries=Object.entries(draft.cart).filter(([id,e])=>e.qty>0);
   if(!entries.length){toast("ยังไม่ได้เลือกเมนู");return;}
-  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel");
-  btn.disabled=true;const old=lbl.textContent;lbl.textContent="กำลังบันทึก…";
+  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel"),old=lbl.textContent;btn.disabled=true;lbl.textContent="กำลังบันทึก…";
   try{
     const store_id=state.data.store.id;let customer_id=null;
     if(draft.customer.mode==="existing")customer_id=draft.customer.id;
-    else if(draft.customer.mode==="new"){
-      const name=(val("newName")||"").trim();
-      if(!name){toast("ใส่ชื่อลูกค้า หรือเลือกลูกค้าทั่วไป");btn.disabled=false;lbl.textContent=old;return;}
-      const phone=(val("newPhone")||"").trim();
-      const c=await post(state.s,"customers",{store_id,name,phone:phone||null},"return=representation");
-      customer_id=c[0].id;
-    }
-    const subtotal=entries.reduce((a,[id,e])=>a+e.price*e.qty,0);
-    const sub=jwtSub(state.s.token);
-    const ob={store_id,customer_id,source:draft.source,status:"completed",subtotal,discount:0,net_total:subtotal};
-    if(sub)ob.created_by=sub;
-    const ord=await post(state.s,"orders",ob,"return=representation");
-    const oid=ord[0].id;
-    const items=entries.map(([id,e])=>({order_id:oid,store_id,menu_item_id:id,item_name:e.name,unit_price:e.price,quantity:e.qty,line_total:e.price*e.qty}));
-    await post(state.s,"order_items",items,"return=minimal");
-    await reloadData();
-    navigate("dash");
-    toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));
+    else if(draft.customer.mode==="new"){const name=val("newName").trim();if(!name){toast("ใส่ชื่อลูกค้า หรือเลือกลูกค้าทั่วไป");btn.disabled=false;lbl.textContent=old;return;}const phone=val("newPhone").trim();const c=await post(state.s,"customers",{store_id,name,phone:phone||null},"return=representation");customer_id=c[0].id;}
+    const subtotal=entries.reduce((a,[id,e])=>a+(e.price+Object.values(e.addons).reduce((x,ad)=>x+ad.price,0))*e.qty,0);
+    const sub=jwtSub(state.s.token);const ob={store_id,customer_id,source:draft.source,status:"completed",subtotal,discount:0,net_total:subtotal};if(sub)ob.created_by=sub;
+    const ord=await post(state.s,"orders",ob,"return=representation");const oid=ord[0].id;
+    const itemsPayload=entries.map(([id,e])=>({order_id:oid,store_id,menu_item_id:id,item_name:e.name,unit_price:e.price,quantity:e.qty,line_total:e.price*e.qty}));
+    const items=await post(state.s,"order_items",itemsPayload,"return=representation");
+    const byMenu={};for(const it of items)byMenu[it.menu_item_id]=it.id;
+    const addonRows=[];for(const[id,e]of entries){const oiid=byMenu[id];for(const aid of Object.keys(e.addons)){const ad=e.addons[aid];addonRows.push({order_item_id:oiid,store_id,addon_id:aid,name:ad.name,price:ad.price,quantity:e.qty});}}
+    if(addonRows.length)await post(state.s,"order_item_addons",addonRows,"return=minimal");
+    await reloadData();navigate("dash");toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));
   }catch(e){toast(e.message||"บันทึกไม่สำเร็จ");btn.disabled=false;lbl.textContent=old;}
 }
 
 // ---------- session ----------
 function doLogout(msg){localStorage.removeItem(LS);const s=state.s||{};state.s=null;state.data=null;renderLogin({url:s.url,key:s.key,email:s.email},msg||"");}
-
-(async function(){
-  let saved=null;try{saved=JSON.parse(localStorage.getItem(LS)||"null");}catch(e){}
-  if(saved&&saved.token){state.s=saved;try{await reloadData();navigate("dash");return;}catch(e){renderLogin({url:saved.url,key:saved.key,email:saved.email});return;}}
-  renderLogin();
-})();
+(async function(){let saved=null;try{saved=JSON.parse(localStorage.getItem(LS)||"null");}catch(e){}if(saved&&saved.token){state.s=saved;try{await reloadData();navigate("dash");return;}catch(e){renderLogin({url:saved.url,key:saved.key,email:saved.email});return;}}renderLogin();})();
 </script>
 </body>
 </html>
