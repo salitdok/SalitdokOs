@@ -190,7 +190,7 @@ const SRC_COLOR={grab:"#00B14F",lineman:"#06C755",shopee:"#EE4D2D",manual:"#6B72
 const TYPES=[["food","อาหาร"],["drink","เครื่องดื่ม"],["addon","Add-on"],["set","ชุดเซ็ต"]];
 const UNITS=["g","ml","ฟอง","ชิ้น","portion"];
 const BULK={g:[["g",1],["kg",1000]],ml:[["ml",1],["ลิตร",1000]]};
-const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items",aiActions:[]};
+const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items",menuFilter:null,aiActions:[]};
 let draft=null, editingMenu=null, editingAddon=null, editingRecipe=[], editingIng=null;
 const bkkDate=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok"}).format(d);
 const monthOf=d=>bkkDate(d).slice(0,7);
@@ -232,7 +232,8 @@ async function loadAll(s){
   const ingredients=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${store.id}&order=name.asc`);
   const purchases=await safeRest(s,`ingredient_purchases?select=id,ingredient_id,purchased_at,qty_base,total_price,note&store_id=eq.${store.id}&order=purchased_at.desc`);
   const recipes=await safeRest(s,`recipe_items?select=id,menu_item_id,ingredient_id,qty&store_id=eq.${store.id}`);
-  return {store,orders,customers,menu,addons,links,ingredients,purchases,recipes};
+  const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
+  return {store,orders,customers,menu,addons,links,ingredients,purchases,recipes,cats};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){const r=await rest(s,`orders?select=id,customer_id,source,status,ordered_at,net_total,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,order_item_addons(addon_id,name,price,quantity))&id=eq.${id}&limit=1`);return r[0];}
@@ -242,7 +243,10 @@ async function reloadData(){state.data=await loadAll(state.s);}
 const menuMap=()=>Object.fromEntries(state.data.menu.map(m=>[m.id,m]));
 const addonMap=()=>Object.fromEntries(state.data.addons.map(a=>[a.id,a]));
 const ingMap=()=>Object.fromEntries(state.data.ingredients.map(i=>[i.id,i]));
-function categories(){return [...new Set(state.data.menu.map(m=>m.category).filter(Boolean))];}
+function allCats(){return (state.data.cats||[]).slice().sort((a,b)=>(a.sort_order-b.sort_order)||String(a.name).localeCompare(b.name));}
+function categories(){const act=allCats().filter(c=>c.is_active!==false).map(c=>c.name);const set=new Set(act);for(const m of state.data.menu){if(m.category&&!set.has(m.category)){set.add(m.category);act.push(m.category);}}return act;}
+function catColor(name){const c=allCats().find(x=>x.name===name);return c&&c.color?c.color:"#9AA3B2";}
+function catOptions(selected){const names=categories();const set=new Set(names);const extra=selected&&!set.has(selected)?[selected]:[];return `<option value="">— ไม่ระบุหมวด —</option>`+[...names,...extra].map(n=>`<option value="${esc(n)}"${n===selected?" selected":""}>${esc(n)}</option>`).join("");}
 function addonsForMenu(m){const ids=new Set();for(const l of state.data.links){if(l.menu_item_id===m.id||(l.category&&l.category===m.category))ids.add(l.addon_id);}return state.data.addons.filter(a=>a.is_active!==false&&ids.has(a.id));}
 
 function ingCostPerUnit(ingId,mkey){
@@ -474,15 +478,87 @@ function renderCustomerEdit(c){
 }
 function renderMenu(){
   const seg=state.menuSeg;
-  const addLabel=seg==="items"?"＋ เพิ่มเมนู":seg==="addons"?"＋ เพิ่ม Add-on":"＋ เพิ่มวัตถุดิบ";
-  app.innerHTML=shell("menu",`<div class="phead"><div class="ptitle">เมนู</div><button class="addtop" id="addNew">${addLabel}</button></div>
+  const headBtns=seg==="items"
+    ? `<button class="addtop" id="addCat" style="background:#fff;border:1px solid var(--line);color:var(--ink)">＋ หมวดหมู่</button><button class="addtop" id="addNew">＋ เมนู</button>`
+    : `<button class="addtop" id="addNew">${seg==="addons"?"＋ เพิ่ม Add-on":"＋ เพิ่มวัตถุดิบ"}</button>`;
+  let filterBar="";
+  if(seg==="items"){const cats=allCats().filter(c=>c.is_active!==false),cur=state.menuFilter||"__all";
+    filterBar=`<div style="display:flex;gap:8px;overflow-x:auto;padding:0 20px 12px;-webkit-overflow-scrolling:touch">
+      <button class="chip sm catf ${cur==="__all"?"active":""}" data-cat="__all" style="flex:0 0 auto">ทั้งหมด</button>
+      ${cats.map(c=>`<button class="chip sm catf ${cur===c.name?"active":""}" data-cat="${esc(c.name)}" style="flex:0 0 auto"><span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:${c.color||"#9AA3B2"};margin-right:6px"></span>${esc(c.name)}</button>`).join("")}
+    </div>`;}
+  app.innerHTML=shell("menu",`<div class="phead"><div class="ptitle">เมนู</div><div style="display:flex;gap:8px">${headBtns}</div></div>
     <div class="seg"><button class="segbtn ${seg==="items"?"on":""}" data-seg="items">เมนู</button><button class="segbtn ${seg==="addons"?"on":""}" data-seg="addons">Add-on</button><button class="segbtn ${seg==="ingredients"?"on":""}" data-seg="ingredients">วัตถุดิบ</button></div>
+    ${filterBar}
     <div id="mlist">${seg==="items"?menuItemsHTML():seg==="addons"?addonsHTML():ingredientsHTML()}</div>`);wireNav();
   document.querySelectorAll("[data-seg]").forEach(b=>b.onclick=()=>{state.menuSeg=b.dataset.seg;renderMenu();});
-  document.getElementById("addNew").onclick=()=>seg==="items"?renderMenuEdit(null):seg==="addons"?renderAddonEdit(null):renderIngredientEdit(null);
+  const an=document.getElementById("addNew");if(an)an.onclick=()=>seg==="items"?renderMenuEdit(null):seg==="addons"?renderAddonEdit(null):renderIngredientEdit(null);
+  const ac=document.getElementById("addCat");if(ac)ac.onclick=renderCategoryManager;
+  document.querySelectorAll(".catf").forEach(b=>b.onclick=()=>{state.menuFilter=b.dataset.cat==="__all"?null:b.dataset.cat;renderMenu();});
   wireMenuList();
 }
-function menuItemsHTML(){if(!state.data.menu.length)return `<div class="empty">ยังไม่มีเมนู — กด “＋ เพิ่มเมนู”</div>`;const cur=monthOf(new Date());return state.data.menu.map(m=>{const cost=recipeRowsFor(m.id).length?recipeCost(m.id,cur):(m.cost!=null&&m.cost!==""?Number(m.cost):null);return `<div class="mmrow ${m.is_active===false?"off":""}"><button class="mmmain" data-edit-menu="${m.id}"><div class="mmname">${esc(m.name)}</div><div class="mmsub">${fmtTHB(m.price)}${cost!=null?` · ต้นทุน ${fmtTHB(cost)} · กำไร ${fmtTHB(m.price-cost)}`:""}${m.category?` · ${esc(m.category)}`:""}</div></button><button class="toggle ${m.is_active===false?"":"on"}" data-toggle-menu="${m.id}">${m.is_active===false?"ปิดขาย":"ขายอยู่"}</button><span class="chev">›</span></div>`;}).join("");}
+function renderCategoryManager(){
+  const cats=allCats();
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">หมวดหมู่</div><button class="addtop" id="addCat">＋ เพิ่มหมวดหมู่</button></div>
+    <div>${cats.length?cats.map(c=>`<div class="mmrow ${c.is_active===false?"off":""}"><span style="width:14px;height:14px;border-radius:99px;background:${c.color||"#9AA3B2"};flex:none"></span><button class="mmmain" data-edit-cat="${c.id}"><div class="mmname">${esc(c.name)}</div><div class="mmsub">ลำดับ ${c.sort_order}${c.is_active===false?" · ปิดใช้งาน":""}</div></button><span class="chev">›</span></div>`).join(""):`<div class="empty">ยังไม่มีหมวดหมู่ — กด “＋ เพิ่มหมวดหมู่”</div>`}</div></div>`;
+  document.getElementById("back").onclick=()=>{state.menuSeg="items";renderMenu();};
+  document.getElementById("addCat").onclick=()=>renderCategoryEdit(null);
+  document.querySelectorAll("[data-edit-cat]").forEach(b=>b.onclick=()=>renderCategoryEdit(state.data.cats.find(c=>c.id===b.dataset.editCat)));
+}
+const CAT_COLORS=["#F2691E","#0E9F6E","#E02424","#F59E0B","#2563EB","#7C3AED","#DB2777","#0891B2","#65A30D","#6B7280"];
+function renderCategoryEdit(c){
+  const isNew=!c,color=c&&c.color?c.color:CAT_COLORS[0];
+  const nextSort=isNew?(allCats().reduce((m,x)=>Math.max(m,x.sort_order),0)+10):c.sort_order;
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่มหมวดหมู่":"แก้ไขหมวดหมู่"}</div></div>
+    <div class="block">
+      <input id="catName" class="nin" placeholder="ชื่อหมวด เช่น กะเพรา / ของทอด / เครื่องดื่ม" value="${esc(c?c.name:"")}" autocapitalize="words"/>
+      <input id="catSort" class="nin" inputmode="numeric" placeholder="ลำดับการแสดงผล (เลขน้อย=มาก่อน)" value="${nextSort}"/>
+      <div class="fhint" style="margin-top:12px">สีของหมวด</div>
+      <div class="chips" id="catColors" style="margin-top:6px">${CAT_COLORS.map(col=>`<button class="catcol" data-col="${col}" style="width:34px;height:34px;border-radius:99px;background:${col};border:3px solid ${col===color?"#14182B":"transparent"}"></button>`).join("")}</div>
+      <div class="swrow"><div class="swlabel">เปิดใช้งาน</div><button class="sw ${(!c||c.is_active!==false)?"on":""}" id="catActive"><span class="knob"></span></button></div>
+    </div>
+    <div style="height:80px"></div>
+    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มหมวดหมู่":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบหมวดนี้</button>`:""}</div></div>`;
+  document.getElementById("back").onclick=renderCategoryManager;
+  let sel=color;document.querySelectorAll("#catColors .catcol").forEach(b=>b.onclick=()=>{sel=b.dataset.col;document.querySelectorAll("#catColors .catcol").forEach(x=>x.style.border="3px solid "+(x.dataset.col===sel?"#14182B":"transparent"));});
+  let active=(!c||c.is_active!==false);const sw=document.getElementById("catActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
+  document.getElementById("save").onclick=()=>saveCategory(c,()=>sel,()=>active);
+  if(!isNew)document.getElementById("del").onclick=()=>deleteCategory(c);
+}
+async function saveCategory(c,getColor,getActive){
+  const name=val("catName").trim();if(!name){toast("ใส่ชื่อหมวด");return;}
+  const sort_order=parseInt(val("catSort"))||0,color=getColor(),is_active=getActive();
+  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+  try{
+    if(c){
+      if(name!==c.name){
+        await patch(state.s,`menu_items?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
+        await patch(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
+        if(state.menuFilter===c.name)state.menuFilter=name;
+      }
+      await patch(state.s,`categories?id=eq.${c.id}`,{name,sort_order,color,is_active});
+    }else{
+      await post(state.s,"categories",{store_id:state.data.store.id,name,sort_order,color,is_active},"return=minimal");
+    }
+    await reloadData();renderCategoryManager();toast("บันทึกหมวดแล้ว");
+  }catch(e){const m=String(e.message||"");toast(/duplicate|unique/i.test(m)?"มีหมวดชื่อนี้แล้ว":m);btn.disabled=false;btn.textContent="บันทึก";}
+}
+async function deleteCategory(c){
+  try{
+    const used=await rest(state.s,`menu_items?select=id&store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}&limit=1`);
+    if(used.length){toast("หมวดนี้ยังมีเมนูอยู่ กรุณาย้ายเมนูก่อน");return;}
+    await del(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`);
+    await del(state.s,`categories?id=eq.${c.id}`);
+    if(state.menuFilter===c.name)state.menuFilter=null;
+    await reloadData();renderCategoryManager();toast("ลบหมวดแล้ว");
+  }catch(e){toast(e.message);}
+}
+function menuItemsHTML(){
+  if(!state.data.menu.length)return `<div class="empty">ยังไม่มีเมนู — กด “＋ เมนู”</div>`;
+  const cur=monthOf(new Date()),filt=state.menuFilter;
+  const list=state.data.menu.filter(m=>!filt||m.category===filt);
+  if(!list.length)return `<div class="empty">ไม่มีเมนูในหมวดนี้</div>`;
+  return list.map(m=>{const cost=recipeRowsFor(m.id).length?recipeCost(m.id,cur):(m.cost!=null&&m.cost!==""?Number(m.cost):null);return `<div class="mmrow ${m.is_active===false?"off":""}"><span style="width:6px;align-self:stretch;border-radius:4px;background:${m.category?catColor(m.category):"transparent"};flex:none"></span><button class="mmmain" data-edit-menu="${m.id}"><div class="mmname">${esc(m.name)}</div><div class="mmsub">${fmtTHB(m.price)}${cost!=null?` · ต้นทุน ${fmtTHB(cost)} · กำไร ${fmtTHB(m.price-cost)}`:""}${m.category?` · ${esc(m.category)}`:""}</div></button><button class="toggle ${m.is_active===false?"":"on"}" data-toggle-menu="${m.id}">${m.is_active===false?"ปิดขาย":"ขายอยู่"}</button><span class="chev">›</span></div>`;}).join("");}
 function addonsHTML(){if(!state.data.addons.length)return `<div class="empty">ยังไม่มี Add-on — กด “＋ เพิ่ม Add-on”<br>เช่น ไข่ดาว +10, เพิ่มข้าว +10</div>`;const lc=id=>state.data.links.filter(l=>l.addon_id===id).length;return state.data.addons.map(a=>`<div class="mmrow ${a.is_active===false?"off":""}"><button class="mmmain" data-edit-addon="${a.id}"><div class="mmname">${esc(a.name)} <span style="color:${BRAND.orange}">+${fmtTHB(a.price)}</span></div><div class="mmsub">ผูกกับ ${lc(a.id)} รายการ</div></button><button class="toggle ${a.is_active===false?"":"on"}" data-toggle-addon="${a.id}">${a.is_active===false?"ปิด":"เปิด"}</button><span class="chev">›</span></div>`).join("");}
 function ingredientsHTML(){if(!state.data.ingredients.length)return `<div class="empty">ยังไม่มีวัตถุดิบ — กด “＋ เพิ่มวัตถุดิบ”<br>เช่น หมูสับ (g), ไข่ไก่ (ฟอง), น้ำมัน (ml)</div>`;const cur=monthOf(new Date());return state.data.ingredients.map(i=>{const c=ingCostPerUnit(i.id,cur);return `<div class="mmrow"><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)}</div><div class="mmsub">${c>0?`฿${fmt2(c)}/${esc(i.base_unit)} (เฉลี่ยเดือนนี้)`:"ยังไม่มีราคาซื้อ"} · หน่วย ${esc(i.base_unit)}</div></button><span class="chev">›</span></div>`;}).join("");}
 function wireMenuList(){
@@ -502,8 +578,8 @@ function renderMenuEdit(m){
       <input id="miName" class="nin" placeholder="ชื่อเมนู เช่น ข้าวกะเพราหมูสับ" value="${esc(m?m.name:"")}" autocapitalize="words"/>
       <input id="miNameEn" class="nin" placeholder="ชื่ออังกฤษ (ไม่บังคับ)" value="${esc(m&&m.name_en?m.name_en:"")}"/>
       <input id="miPrice" class="nin" placeholder="ราคาขาย (บาท)" inputmode="decimal" value="${m?Number(m.price):""}"/>
-      <input id="miCat" class="nin" placeholder="หมวดหมู่ เช่น จานเดียว (ไม่ใส่ก็ได้)" list="catlist" value="${esc(m?(m.category||""):"")}"/>
-      <datalist id="catlist">${cats.map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
+      <div class="fhint" style="margin-top:12px">หมวดหมู่</div>
+      <select id="miCat" class="nin" style="margin-top:6px">${catOptions(m?(m.category||""):"")}</select>
       <div class="fhint" style="margin-top:12px">ประเภทสินค้า</div>
       <div class="chips" id="typeChips" style="margin-top:6px">${TYPES.map(([k,l])=>`<button class="chip sm ${k===curType?"active":""}" data-type="${k}">${l}</button>`).join("")}</div>
       <input id="miCost" class="nin" placeholder="ต้นทุน/จาน แบบกรอกเอง (ถ้าไม่ใช้สูตร)" inputmode="decimal" value="${showManual?Number(m.cost):""}"/>
