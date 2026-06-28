@@ -230,7 +230,7 @@ async function loadAll(s){
   let orders;
   try{orders=await rest(s,`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,cost_snapshot,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);}
   catch(e){orders=await rest(s,`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);}
-  const customers=await rest(s,`customers?select=id,name,phone,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${store.id}&is_active=eq.true&order=total_spent.desc`);
+  const customers=await rest(s,`customers?select=id,name,phone,is_guest,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${store.id}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
   const menu=await rest(s,`menu_items?select=id,name,name_en,product_type,price,cost,category,sort_order,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
   const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${store.id}&order=sort_order.asc`);
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${store.id}`);
@@ -253,6 +253,14 @@ function categories(){const act=allCats().filter(c=>c.is_active!==false).map(c=>
 function catColor(name){const c=allCats().find(x=>x.name===name);return c&&c.color?c.color:"#9AA3B2";}
 function catOptions(selected){const names=categories();const set=new Set(names);const extra=selected&&!set.has(selected)?[selected]:[];return `<option value="">— ไม่ระบุหมวด —</option>`+[...names,...extra].map(n=>`<option value="${esc(n)}"${n===selected?" selected":""}>${esc(n)}</option>`).join("");}
 function addonsForMenu(m){const ids=new Set();for(const l of state.data.links){if(l.menu_item_id===m.id||(l.category&&l.category===m.category))ids.add(l.addon_id);}return state.data.addons.filter(a=>a.is_active!==false&&ids.has(a.id));}
+const realCustomers=()=>state.data.customers.filter(c=>!c.is_guest);
+async function ensureGuest(){
+  let g=state.data.customers.find(c=>c.is_guest);if(g)return g.id;
+  const found=await rest(state.s,`customers?select=id&store_id=eq.${state.data.store.id}&is_guest=eq.true&limit=1`);
+  if(found.length)return found[0].id;
+  const r=await post(state.s,"customers",{store_id:state.data.store.id,name:"ลูกค้าทั่วไป",is_guest:true},"return=representation");
+  return r[0].id;
+}
 
 function ingCostPerUnit(ingId,mkey){
   const ps=state.data.purchases.filter(p=>p.ingredient_id===ingId);
@@ -267,7 +275,7 @@ function recipeCost(menuId,mkey){return costOfRows(recipeRowsFor(menuId).map(r=>
 function unitCostSnapshot(menuId,saleMonth){const mm=menuMap()[menuId];if(recipeRowsFor(menuId).length)return Math.round(recipeCost(menuId,saleMonth)*100)/100;return (mm&&mm.cost!=null&&mm.cost!=="")?Number(mm.cost):0;}
 
 function computeFacts(data){
-  const {orders,customers}=data;
+  const orders=data.orders,customers=data.customers.filter(c=>!c.is_guest);
   const today=bkkDate(new Date()),yest=bkkDate(new Date(Date.now()-DAY)),wago=bkkDate(new Date(Date.now()-7*DAY)),curMonth=monthOf(new Date());
   const byDay={};for(const o of orders){const d=bkkDate(new Date(o.ordered_at));(byDay[d]||(byDay[d]={sales:0,count:0}));byDay[d].sales+=Number(o.net_total)||0;byDay[d].count+=1;}
   const t=byDay[today]||{sales:0,count:0},y=byDay[yest]||{sales:0,count:0},w=byDay[wago]||{sales:0,count:0};
@@ -483,7 +491,7 @@ async function renderOrderDetail(id){
 }
 
 function renderCustomers(filter=""){
-  const mm=menuMap(),all=state.data.customers;
+  const mm=menuMap(),all=realCustomers();
   const rowsHTML=l=>l.length?l.map(c=>{const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;return `<button class="crow" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
   const f=filter.trim().toLowerCase();
   app.innerHTML=shell("customers",`<div class="phead"><div class="ptitle">ลูกค้า</div></div><div class="search"><input id="csearch" class="searchin" placeholder="ค้นหาชื่อลูกค้า…" autocapitalize="none" value="${esc(filter)}"/></div><div id="clist">${rowsHTML(f?all.filter(c=>(c.name||"").toLowerCase().includes(f)):all)}</div>`);wireNav();
@@ -817,7 +825,7 @@ function renderAdd(){
   document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
   document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
   const cs=document.getElementById("custSearch");
-  cs.oninput=()=>{const q=cs.value.trim().toLowerCase(),res=document.getElementById("custResults");if(!q){res.innerHTML="";return;}res.innerHTML=state.data.customers.filter(c=>(c.name||"").toLowerCase().includes(q)).slice(0,6).map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("");res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));};
+  cs.oninput=()=>{const q=cs.value.trim().toLowerCase(),res=document.getElementById("custResults");if(!q){res.innerHTML="";return;}res.innerHTML=realCustomers().filter(c=>(c.name||"").toLowerCase().includes(q)).slice(0,6).map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("");res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));};
   document.getElementById("qWalkin").onclick=()=>{draft.customer={mode:"walkin"};document.getElementById("custResults").innerHTML="";cs.value="";renderSelected();};
   document.getElementById("qNew").onclick=()=>{draft.customer={mode:"new"};document.getElementById("custResults").innerHTML="";renderSelected(cs.value.trim());};
   renderSelected();syncMenu();
@@ -861,6 +869,7 @@ async function saveOrder(){
     const store_id=state.data.store.id,orderedAt=fromLocalInput(val("orderedAt")),saleMonth=monthOf(new Date(orderedAt));let customer_id=null;
     if(draft.customer.mode==="existing")customer_id=draft.customer.id;
     else if(draft.customer.mode==="new"){const name=val("newName").trim();if(!name){toast("ใส่ชื่อลูกค้า หรือเลือกลูกค้าทั่วไป");btn.disabled=false;lbl.textContent=old;return;}const phone=val("newPhone").trim();const c=await post(state.s,"customers",{store_id,name,phone:phone||null},"return=representation");customer_id=c[0].id;}
+    else customer_id=await ensureGuest();
     const subtotal=entries.reduce((a,[id,e])=>a+(e.price+Object.values(e.addons).reduce((x,ad)=>x+ad.price,0))*e.qty,0);
     let oid;
     if(draft.editId){oid=draft.editId;await patch(state.s,`orders?id=eq.${oid}`,{customer_id,source:draft.source,ordered_at:orderedAt,subtotal,net_total:subtotal});await del(state.s,`order_items?order_id=eq.${oid}`);}
