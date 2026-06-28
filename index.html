@@ -392,14 +392,44 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
+const ENTITY_TH={ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อวัตถุดิบ",recipe_items:"สูตรอาหาร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
+const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
+const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
+function auditVal(field,v){
+  if(v==null)return "—";
+  if(field==="is_active")return v?"เปิด":"ปิด";
+  if(field==="product_type")return (TYPES.find(t=>t[0]===v)||[v,v])[1];
+  if(typeof v==="object")return JSON.stringify(v);
+  if((field==="price"||field==="cost"||field==="total_price")&&!isNaN(v))return fmtTHB(Number(v));
+  if(field==="ingredient_id"||field==="menu_item_id"||field==="addon_id"){const im=ingMap()[v];if(im)return im.name;const mm=menuMap()[v];if(mm)return mm.name;const am=addonMap()[v];if(am)return am.name;return String(v).slice(0,8);}
+  return String(v);
+}
+function auditLabel(log){
+  const ch=log.changes||{};
+  if(log.action==="UPDATE"){return Object.keys(ch).filter(k=>FIELD_TH[k]||true).map(k=>`${FIELD_TH[k]||k}: <span style="color:var(--slate)">${esc(auditVal(k,ch[k]&&ch[k].old))}</span> → <b>${esc(auditVal(k,ch[k]&&ch[k].new))}</b>`).join("<br>");}
+  const name=ch.name||ch.item_name;const parts=[];if(name)parts.push(`<b>${esc(name)}</b>`);
+  for(const k of ["price","cost","qty","qty_base","total_price","purchased_at","category"])if(ch[k]!=null)parts.push(`${FIELD_TH[k]||k}: ${esc(auditVal(k,ch[k]))}`);
+  return parts.join(" · ")||"(รายการ)";
+}
+async function fetchAudit(extra){return rest(state.s,`audit_logs?select=id,actor_email,action,entity,entity_id,changes,created_at&store_id=eq.${state.data.store.id}${extra||""}&order=created_at.desc&limit=200`);}
+async function renderAuditLog(filter){
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ประวัติการแก้ไข</div></div>${filter&&filter.title?`<div class="block"><div class="selbox"><b>${esc(filter.title)}</b><div class="cmeta">เฉพาะรายการนี้</div></div></div>`:""}<div id="alist" class="block"><div class="empty">กำลังโหลด…</div></div></div>`;
+  document.getElementById("back").onclick=()=>filter&&filter.back?filter.back():renderSettings();
+  let logs;try{logs=await fetchAudit(filter&&filter.extra);}catch(e){document.getElementById("alist").innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;return;}
+  if(!logs.length){document.getElementById("alist").innerHTML=`<div class="empty">ยังไม่มีประวัติการแก้ไข<br>ทุกการ เพิ่ม/แก้/ลบ ตั้งแต่นี้จะถูกบันทึกอัตโนมัติ</div>`;return;}
+  document.getElementById("alist").innerHTML=logs.map(log=>{const [aTxt,aCol]=ACT_TH[log.action]||[log.action,"#6B7280"];const time=new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(log.created_at));return `<div class="selbox" style="margin-bottom:9px"><div class="row"><div><span class="badge" style="background:${aCol}22;color:${aCol}">${aTxt}</span> <b style="font-size:14px">${esc(ENTITY_TH[log.entity]||log.entity)}</b></div><div class="otime">${time}</div></div><div class="cmeta" style="margin-top:6px;line-height:1.6">${auditLabel(log)}</div><div class="cmeta" style="margin-top:6px;color:#9aa0ab">โดย ${esc(log.actor_email||"ระบบ")}</div></div>`;}).join("");
+}
 function renderSettings(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ตั้งค่า</div></div>
     <div class="setrow"><div class="mmname">${esc(state.data.store.name)}</div><div class="mmsub">${esc(state.s.email)}</div></div>
     <div class="block"><div class="cmeta">ต้นทุน/กำไรคำนวณจากสูตรวัตถุดิบ × ราคาเฉลี่ยของเดือน (ตั้งในแท็บเมนู → วัตถุดิบ และในแต่ละเมนู → สูตรต้นทุน)</div></div>
+    <div class="blocktitle">การตรวจสอบ</div>
+    <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
     <div class="block"><button class="delbtn" id="clear" style="margin-top:0">🗑️ ล้างข้อมูล & เริ่มต้นใหม่</button><div class="cmeta" style="margin-top:8px">ลบ ออเดอร์/ลูกค้า/เมนู/Add-on/วัตถุดิบ ทั้งหมด · เก็บ user, ร้าน, แพ็กเกจ</div></div>
     <div class="block"><button class="ghostbtn" id="logout" style="margin-top:0">ออกจากระบบ</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("dash");
+  document.getElementById("audit").onclick=()=>renderAuditLog();
   document.getElementById("clear").onclick=renderClearConfirm;
   document.getElementById("logout").onclick=()=>doLogout();
 }
@@ -692,10 +722,11 @@ function renderIngredientEdit(ing){
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
       ${purchases.length?purchases.map(p=>`<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${fmt2(p.qty_base)} ${esc(ing.base_unit)} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
     <div style="height:90px"></div>
-    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มวัตถุดิบ":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบวัตถุดิบนี้</button>`:""}</div></div>`;
+    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มวัตถุดิบ":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="auditIng">🧾 ดูประวัติการแก้ไขวัตถุดิบนี้</button><button class="delbtn" id="del">ลบวัตถุดิบนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
   document.querySelectorAll("#unitChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#unitChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
   document.getElementById("save").onclick=saveIngredient;
+  if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id))});}
   if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));}
 }
 async function saveIngredient(){
