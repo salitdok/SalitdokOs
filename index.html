@@ -213,7 +213,12 @@ async function doRefresh(){if(!state.s||!state.s.refresh){const e=new Error("เ
 async function ensureFresh(){if(state.s&&state.s.expiresAt&&Date.now()>state.s.expiresAt-60000)await doRefresh();}
 async function rest(s,path){await ensureFresh();const go=()=>fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}if(r.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}const d=await r.json();if(!r.ok)throw new Error(d.message||d.hint||"ดึงข้อมูลไม่สำเร็จ");return d;}
 async function safeRest(s,path){try{return await rest(s,path);}catch(e){return [];}}
-async function send(s,method,path,body,prefer){await ensureFresh();const go=()=>fetch(s.url+"/rest/v1/"+path,{method,headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer||"return=representation"},body:body?JSON.stringify(body):undefined});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"ทำรายการไม่สำเร็จ");return d;}
+let AUDIT_REASON="";
+const REASONS=["ราคาตลาดปรับขึ้น","กรอกผิด","เปลี่ยน Supplier","ปรับสูตรอาหาร","แก้ข้อมูลย้อนหลัง"];
+function reasonBlock(id){return `<div class="blocktitle">เหตุผลการแก้ไข (ถ้ามี)</div><div class="block"><input id="${id}" class="nin" style="margin-top:0" placeholder="เช่น ราคาตลาดปรับขึ้น (ไม่กรอกก็ได้)"/><div class="chips" style="margin-top:8px">${REASONS.map(r=>`<button type="button" class="chip sm" data-reason="${esc(r)}" data-rtarget="${id}">${esc(r)}</button>`).join("")}</div></div>`;}
+function wireReasonChips(){document.querySelectorAll("[data-reason]").forEach(b=>b.onclick=()=>{const inp=document.getElementById(b.dataset.rtarget);if(inp)inp.value=b.dataset.reason;});}
+function withReason(reason,fn){AUDIT_REASON=(reason||"").trim();return Promise.resolve().then(fn).finally(()=>{AUDIT_REASON="";});}
+async function send(s,method,path,body,prefer){await ensureFresh();const hdr=()=>{const h={apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer||"return=representation"};if(AUDIT_REASON)h["x-audit-reason"]=AUDIT_REASON;return h;};const go=()=>fetch(s.url+"/rest/v1/"+path,{method,headers:hdr(),body:body?JSON.stringify(body):undefined});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"ทำรายการไม่สำเร็จ");return d;}
 const post=(s,p,b,pr)=>send(s,"POST",p,b,pr);
 const patch=(s,p,b)=>send(s,"PATCH",p,b,"return=minimal");
 const del=(s,p)=>send(s,"DELETE",p,null,"return=minimal");
@@ -411,13 +416,13 @@ function auditLabel(log){
   for(const k of ["price","cost","qty","qty_base","total_price","purchased_at","category"])if(ch[k]!=null)parts.push(`${FIELD_TH[k]||k}: ${esc(auditVal(k,ch[k]))}`);
   return parts.join(" · ")||"(รายการ)";
 }
-async function fetchAudit(extra){return rest(state.s,`audit_logs?select=id,actor_email,action,entity,entity_id,changes,created_at&store_id=eq.${state.data.store.id}${extra||""}&order=created_at.desc&limit=200`);}
+async function fetchAudit(extra){return rest(state.s,`audit_logs?select=id,actor_email,action,entity,entity_id,changes,reason,created_at&store_id=eq.${state.data.store.id}${extra||""}&order=created_at.desc&limit=200`);}
 async function renderAuditLog(filter){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ประวัติการแก้ไข</div></div>${filter&&filter.title?`<div class="block"><div class="selbox"><b>${esc(filter.title)}</b><div class="cmeta">เฉพาะรายการนี้</div></div></div>`:""}<div id="alist" class="block"><div class="empty">กำลังโหลด…</div></div></div>`;
   document.getElementById("back").onclick=()=>filter&&filter.back?filter.back():renderSettings();
   let logs;try{logs=await fetchAudit(filter&&filter.extra);}catch(e){document.getElementById("alist").innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;return;}
   if(!logs.length){document.getElementById("alist").innerHTML=`<div class="empty">ยังไม่มีประวัติการแก้ไข<br>ทุกการ เพิ่ม/แก้/ลบ ตั้งแต่นี้จะถูกบันทึกอัตโนมัติ</div>`;return;}
-  document.getElementById("alist").innerHTML=logs.map(log=>{const [aTxt,aCol]=ACT_TH[log.action]||[log.action,"#6B7280"];const time=new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(log.created_at));return `<div class="selbox" style="margin-bottom:9px"><div class="row"><div><span class="badge" style="background:${aCol}22;color:${aCol}">${aTxt}</span> <b style="font-size:14px">${esc(ENTITY_TH[log.entity]||log.entity)}</b></div><div class="otime">${time}</div></div><div class="cmeta" style="margin-top:6px;line-height:1.6">${auditLabel(log)}</div><div class="cmeta" style="margin-top:6px;color:#9aa0ab">โดย ${esc(log.actor_email||"ระบบ")}</div></div>`;}).join("");
+  document.getElementById("alist").innerHTML=logs.map(log=>{const [aTxt,aCol]=ACT_TH[log.action]||[log.action,"#6B7280"];const time=new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(log.created_at));return `<div class="selbox" style="margin-bottom:9px"><div class="row"><div><span class="badge" style="background:${aCol}22;color:${aCol}">${aTxt}</span> <b style="font-size:14px">${esc(ENTITY_TH[log.entity]||log.entity)}</b></div><div class="otime">${time}</div></div><div class="cmeta" style="margin-top:6px;line-height:1.6">${auditLabel(log)}</div>${log.reason?`<div style="margin-top:6px"><span class="badge" style="background:#14182B12;color:#14182B">เหตุผล: ${esc(log.reason)}</span></div>`:""}<div class="cmeta" style="margin-top:6px;color:#9aa0ab">โดย ${esc(log.actor_email||"ระบบ")}</div></div>`;}).join("");
 }
 function renderSettings(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ตั้งค่า</div></div>
@@ -548,8 +553,10 @@ function renderCategoryEdit(c){
       <div class="swrow"><div class="swlabel">เปิดใช้งาน</div><button class="sw ${(!c||c.is_active!==false)?"on":""}" id="catActive"><span class="knob"></span></button></div>
     </div>
     <div style="height:80px"></div>
+    ${reasonBlock("rsnCat")}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มหมวดหมู่":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบหมวดนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=renderCategoryManager;
+  wireReasonChips();
   let sel=color;document.querySelectorAll("#catColors .catcol").forEach(b=>b.onclick=()=>{sel=b.dataset.col;document.querySelectorAll("#catColors .catcol").forEach(x=>x.style.border="3px solid "+(x.dataset.col===sel?"#14182B":"transparent"));});
   let active=(!c||c.is_active!==false);const sw=document.getElementById("catActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
   document.getElementById("save").onclick=()=>saveCategory(c,()=>sel,()=>active);
@@ -560,16 +567,18 @@ async function saveCategory(c,getColor,getActive){
   const sort_order=parseInt(val("catSort"))||0,color=getColor(),is_active=getActive();
   const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
   try{
-    if(c){
-      if(name!==c.name){
-        await patch(state.s,`menu_items?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
-        await patch(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
-        if(state.menuFilter===c.name)state.menuFilter=name;
+    await withReason(val("rsnCat"),async()=>{
+      if(c){
+        if(name!==c.name){
+          await patch(state.s,`menu_items?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
+          await patch(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`,{category:name});
+          if(state.menuFilter===c.name)state.menuFilter=name;
+        }
+        await patch(state.s,`categories?id=eq.${c.id}`,{name,sort_order,color,is_active});
+      }else{
+        await post(state.s,"categories",{store_id:state.data.store.id,name,sort_order,color,is_active},"return=minimal");
       }
-      await patch(state.s,`categories?id=eq.${c.id}`,{name,sort_order,color,is_active});
-    }else{
-      await post(state.s,"categories",{store_id:state.data.store.id,name,sort_order,color,is_active},"return=minimal");
-    }
+    });
     await reloadData();renderCategoryManager();toast("บันทึกหมวดแล้ว");
   }catch(e){const m=String(e.message||"");toast(/duplicate|unique/i.test(m)?"มีหมวดชื่อนี้แล้ว":m);btn.disabled=false;btn.textContent="บันทึก";}
 }
@@ -577,8 +586,10 @@ async function deleteCategory(c){
   try{
     const used=await rest(state.s,`menu_items?select=id&store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}&limit=1`);
     if(used.length){toast("หมวดนี้ยังมีเมนูอยู่ กรุณาย้ายเมนูก่อน");return;}
-    await del(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`);
-    await del(state.s,`categories?id=eq.${c.id}`);
+    await withReason(val("rsnCat"),async()=>{
+      await del(state.s,`addon_links?store_id=eq.${state.data.store.id}&category=eq.${encodeURIComponent(c.name)}`);
+      await del(state.s,`categories?id=eq.${c.id}`);
+    });
     if(state.menuFilter===c.name)state.menuFilter=null;
     await reloadData();renderCategoryManager();toast("ลบหมวดแล้ว");
   }catch(e){toast(e.message);}
@@ -618,8 +629,10 @@ function renderMenuEdit(m){
     <div class="blocktitle">สูตรต้นทุน (COG) — วัตถุดิบที่ใช้ต่อ 1 จาน</div>
     <div class="block"><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบ</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
     <div style="height:90px"></div>
+    ${reasonBlock("rsnMenu")}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มเมนู":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="copy">📄 คัดลอกเมนูนี้</button><button class="delbtn" id="del">ลบเมนูนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
+  wireReasonChips();
   document.querySelectorAll("#typeChips .chip").forEach(c=>c.onclick=()=>{document.querySelectorAll("#typeChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
   let active=(!m||m.is_active!==false);const sw=document.getElementById("miActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
   const pr=document.getElementById("miPrice");pr.oninput=updateRecipeSum;
@@ -657,11 +670,13 @@ async function saveMenuItem(active){
   let cost;if(rows.length)cost=Math.round(costOfRows(rows,cur)*100)/100;else{const cr=val("miCost").trim();cost=cr===""?null:(parseFloat(cr)||0);}
   const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
   try{
-    let menuId;
-    if(editingMenu){await patch(state.s,`menu_items?id=eq.${editingMenu.id}`,{name,name_en,product_type,price,cost,category,is_active:active});menuId=editingMenu.id;}
-    else{const r=await post(state.s,"menu_items",{store_id:state.data.store.id,name,name_en,product_type,price,cost,category,is_active:active,sort_order:state.data.menu.length+1},"return=representation");menuId=r[0].id;}
-    await del(state.s,`recipe_items?menu_item_id=eq.${menuId}`);
-    if(rows.length)await post(state.s,"recipe_items",rows.map(r=>({store_id:state.data.store.id,menu_item_id:menuId,ingredient_id:r.ingredient_id,qty:r.qty})),"return=minimal");
+    await withReason(val("rsnMenu"),async()=>{
+      let menuId;
+      if(editingMenu){await patch(state.s,`menu_items?id=eq.${editingMenu.id}`,{name,name_en,product_type,price,cost,category,is_active:active});menuId=editingMenu.id;}
+      else{const r=await post(state.s,"menu_items",{store_id:state.data.store.id,name,name_en,product_type,price,cost,category,is_active:active,sort_order:state.data.menu.length+1},"return=representation");menuId=r[0].id;}
+      await del(state.s,`recipe_items?menu_item_id=eq.${menuId}`);
+      if(rows.length)await post(state.s,"recipe_items",rows.map(r=>({store_id:state.data.store.id,menu_item_id:menuId,ingredient_id:r.ingredient_id,qty:r.qty})),"return=minimal");
+    });
     await reloadData();renderMenu();toast("บันทึกเมนูแล้ว");
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
 }
@@ -672,7 +687,7 @@ async function copyMenu(m){
     await reloadData();toast("คัดลอกเมนูแล้ว");renderMenuEdit(state.data.menu.find(x=>x.id===nid));
   }catch(e){toast(e.message);}
 }
-async function deleteMenuItem(m){try{const used=await rest(state.s,`order_items?select=id&menu_item_id=eq.${m.id}&limit=1`);if(used.length){toast("เมนูนี้มีออเดอร์แล้ว — ใช้ปิดขายแทนการลบ");return;}await del(state.s,`recipe_items?menu_item_id=eq.${m.id}`);await del(state.s,`menu_items?id=eq.${m.id}`);await reloadData();renderMenu();toast("ลบเมนูแล้ว");}catch(e){toast(e.message);}}
+async function deleteMenuItem(m){try{const used=await rest(state.s,`order_items?select=id&menu_item_id=eq.${m.id}&limit=1`);if(used.length){toast("เมนูนี้มีออเดอร์แล้ว — ใช้ปิดขายแทนการลบ");return;}await withReason(val("rsnMenu"),async()=>{await del(state.s,`recipe_items?menu_item_id=eq.${m.id}`);await del(state.s,`menu_items?id=eq.${m.id}`);});await reloadData();renderMenu();toast("ลบเมนูแล้ว");}catch(e){toast(e.message);}}
 
 function renderAddonEdit(a){
   editingAddon=a;const isNew=!a,cats=categories();
@@ -722,8 +737,10 @@ function renderIngredientEdit(ing){
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
       ${purchases.length?purchases.map(p=>`<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${fmt2(p.qty_base)} ${esc(ing.base_unit)} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
     <div style="height:90px"></div>
+    ${ing?reasonBlock("rsnIng"):""}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มวัตถุดิบ":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="auditIng">🧾 ดูประวัติการแก้ไขวัตถุดิบนี้</button><button class="delbtn" id="del">ลบวัตถุดิบนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
+  wireReasonChips();
   document.querySelectorAll("#unitChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#unitChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
   document.getElementById("save").onclick=saveIngredient;
   if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id))});}
@@ -731,11 +748,11 @@ function renderIngredientEdit(ing){
 }
 async function saveIngredient(){
   const name=val("igName").trim();if(!name){toast("ใส่ชื่อวัตถุดิบ");return;}
-  const uc=document.querySelector("#unitChips .chip.active");const base_unit=uc?uc.dataset.unit:"g";
+  const uc=document.querySelector("#unitChips .chip.active");const base_unit=uc?uc.dataset.unit:"g";const reason=val("rsnIng");
   const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
-  try{if(editingIng){await patch(state.s,`ingredients?id=eq.${editingIng.id}`,{name,base_unit});await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await post(state.s,"ingredients",{store_id:state.data.store.id,name,base_unit},"return=representation");await reloadData();renderIngredientEdit(state.data.ingredients.find(i=>i.id===r[0].id));toast("เพิ่มวัตถุดิบแล้ว — บันทึกการซื้อต่อได้เลย");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+  try{if(editingIng){await withReason(reason,()=>patch(state.s,`ingredients?id=eq.${editingIng.id}`,{name,base_unit}));await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await withReason(reason,()=>post(state.s,"ingredients",{store_id:state.data.store.id,name,base_unit},"return=representation"));await reloadData();renderIngredientEdit(state.data.ingredients.find(i=>i.id===r[0].id));toast("เพิ่มวัตถุดิบแล้ว — บันทึกการซื้อต่อได้เลย");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
 }
-async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&ingredient_id=eq.${ing.id}&limit=1`);if(used.length){toast("วัตถุดิบนี้ถูกใช้ในสูตรเมนู — เอาออกจากสูตรก่อน");return;}await del(state.s,`ingredient_purchases?ingredient_id=eq.${ing.id}`);await del(state.s,`ingredients?id=eq.${ing.id}`);await reloadData();renderMenu();toast("ลบวัตถุดิบแล้ว");}catch(e){toast(e.message);}}
+async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&ingredient_id=eq.${ing.id}&limit=1`);if(used.length){toast("วัตถุดิบนี้ถูกใช้ในสูตรเมนู — เอาออกจากสูตรก่อน");return;}await withReason(val("rsnIng"),async()=>{await del(state.s,`ingredient_purchases?ingredient_id=eq.${ing.id}`);await del(state.s,`ingredients?id=eq.${ing.id}`);});await reloadData();renderMenu();toast("ลบวัตถุดิบแล้ว");}catch(e){toast(e.message);}}
 function renderPurchase(ing,existing){
   const isEdit=!!existing;const units=BULK[ing.base_unit]||[[ing.base_unit,1]];
   const dDate=isEdit?String(existing.purchased_at).slice(0,10):bkkDate(new Date());
@@ -750,8 +767,10 @@ function renderPurchase(ing,existing){
       <input id="puTotal" class="nin" inputmode="decimal" placeholder="ราคารวมที่จ่าย (บาท) เช่น 160" value="${dTotal}"/>
       <input id="puNote" class="nin" placeholder="หมายเหตุ (ถ้ามี) เช่น ตลาดเช้า / ล็อตพิเศษ" value="${esc(dNote)}"/>
       <div class="costsum" id="puPreview" style="margin-top:10px"></div></div>
+    ${reasonBlock("rsnPur")}
     <div style="height:90px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id));
+  wireReasonChips();
   const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,f=(BULK[ing.base_unit]||[[ing.base_unit,1]]).find(x=>x[0]===val("puUnit"));const factor=f?f[1]:1;const base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= ${fmt2(base)} ${esc(ing.base_unit)} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
   ["puQty","puTotal","puUnit"].forEach(id=>{const el=document.getElementById(id);el.oninput=upd;el.onchange=upd;});upd();
   document.getElementById("save").onclick=async()=>{
@@ -760,8 +779,8 @@ function renderPurchase(ing,existing){
     if(base<=0||tot<=0){toast("กรอกปริมาณและราคาให้ถูกต้อง");return;}
     const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
     try{
-      if(isEdit)await patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,{purchased_at:date,qty_base:base,total_price:tot,note});
-      else await post(state.s,"ingredient_purchases",{store_id:state.data.store.id,ingredient_id:ing.id,purchased_at:date,qty_base:base,total_price:tot,note},"return=minimal");
+      if(isEdit)await withReason(val("rsnPur"),()=>patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,{purchased_at:date,qty_base:base,total_price:tot,note}));
+      else await withReason(val("rsnPur"),()=>post(state.s,"ingredient_purchases",{store_id:state.data.store.id,ingredient_id:ing.id,purchased_at:date,qty_base:base,total_price:tot,note},"return=minimal"));
       await reloadData();toast(isEdit?"แก้ไขการซื้อแล้ว — คำนวณต้นทุนใหม่แล้ว":"บันทึกการซื้อแล้ว");renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id));
     }catch(e){toast(e.message);btn.disabled=false;btn.textContent=isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ";}
   };
@@ -769,7 +788,7 @@ function renderPurchase(ing,existing){
     const bar=document.querySelector(".savebar");
     bar.innerHTML=`<div class="warnbox" style="margin:0 0 12px">ลบรายการซื้อนี้? (ลบเฉพาะรายการนี้ ไม่ลบวัตถุดิบ) ระบบจะคำนวณต้นทุนเฉลี่ยใหม่ทันที</div><button class="delbtn" id="delYes" style="margin-top:0">ยืนยันลบรายการนี้</button><button class="ghostbtn" id="delNo">ยกเลิก</button>`;
     document.getElementById("delNo").onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===existing.id));
-    document.getElementById("delYes").onclick=async()=>{try{await del(state.s,`ingredient_purchases?id=eq.${existing.id}`);await reloadData();toast("ลบรายการซื้อแล้ว");renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id));}catch(e){toast(e.message);}};
+    document.getElementById("delYes").onclick=async()=>{try{await withReason(val("rsnPur"),()=>del(state.s,`ingredient_purchases?id=eq.${existing.id}`));await reloadData();toast("ลบรายการซื้อแล้ว");renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id));}catch(e){toast(e.message);}};
   };
 }
 function openAdd(preCustId){draft={editId:null,customer:{mode:"walkin"},cart:{},source:"manual",orderedAt:toLocalInput(new Date())};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
