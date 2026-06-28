@@ -176,6 +176,12 @@
 <div id="app"></div>
 <div id="toast" class="toast"></div>
 <script>
+// ===== ตั้งค่าระบบ — แก้ครั้งเดียว (ใส่ค่าของร้านคุณ) =====
+const CONFIG={
+  SUPABASE_URL:"https://opxnxqrafccrwygtmhyi.supabase.co/",   // <-- วาง Project URL ของร้าน (Settings → API)
+  SUPABASE_ANON_KEY:"sb_publishable_MUlg4CcIMELVfP9wkrtcsw_Hvt-NdNl"      // <-- วาง anon/publishable key (ฝังได้ปลอดภัย เพราะ RLS ป้องกันข้อมูลอยู่)
+};
+const CONFIG_READY=()=>/^https:\/\//.test(CONFIG.SUPABASE_URL)&&!CONFIG.SUPABASE_URL.includes("YOUR-")&&CONFIG.SUPABASE_ANON_KEY.length>20&&!CONFIG.SUPABASE_ANON_KEY.includes("YOUR-");
 const BRAND={ink:"#14182B",orange:"#F2691E",up:"#0E9F6E",down:"#E02424",amber:"#F59E0B",slate:"#5B6472"};
 const DAY=86400000, LS="salitdok_session";
 const SRC=[["manual","หน้าร้าน/กรอกเอง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"]];
@@ -200,10 +206,14 @@ function toLocalInput(date){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"A
 function fromLocalInput(v){if(!v)return new Date().toISOString();let s=v.length===16?v+":00":v;return s+"+07:00";}
 function deltaPill(label,pct){const c=pct===null?"#c9cfdd":(pct<0?"#ff9b9b":"#86e0bd");const t=pct===null?"—":`${pct<0?"▼":"▲"}${Math.abs(pct)}%`;return `<span class="cmppill">${label} <b style="color:${c}">${t}</b></span>`;}
 
-async function signIn(url,key,email,password){let r;try{r=await fetch(url+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email,password})});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase — ตรวจ Project URL และเปิดผ่าน https");}const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.msg||d.error||"เข้าสู่ระบบไม่สำเร็จ");return d.access_token;}
-async function rest(s,path){let r;try{r=await fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}const d=await r.json();if(!r.ok)throw new Error(d.message||d.hint||"ดึงข้อมูลไม่สำเร็จ");return d;}
+function persistSession(){if(!state.s)return;localStorage.setItem(LS,JSON.stringify({email:state.s.email,token:state.s.token,refresh:state.s.refresh,expiresAt:state.s.expiresAt}));}
+function setSession(email,d){state.s={url:CONFIG.SUPABASE_URL,key:CONFIG.SUPABASE_ANON_KEY,email,token:d.access_token,refresh:d.refresh_token,expiresAt:Date.now()+((d.expires_in||3600)*1000)};persistSession();}
+async function signIn(email,password){let r;try{r=await fetch(CONFIG.SUPABASE_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:CONFIG.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase — ตรวจการเชื่อมต่อ");}const d=await r.json();if(!r.ok)throw new Error(d.error_description||d.msg||d.error||"อีเมลหรือรหัสผ่านไม่ถูกต้อง");setSession(email,d);}
+async function doRefresh(){if(!state.s||!state.s.refresh){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}let r;try{r=await fetch(CONFIG.SUPABASE_URL+"/auth/v1/token?grant_type=refresh_token",{method:"POST",headers:{apikey:CONFIG.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:state.s.refresh})});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}const d=await r.json();if(!r.ok){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}state.s.token=d.access_token;state.s.refresh=d.refresh_token||state.s.refresh;state.s.expiresAt=Date.now()+((d.expires_in||3600)*1000);persistSession();}
+async function ensureFresh(){if(state.s&&state.s.expiresAt&&Date.now()>state.s.expiresAt-60000)await doRefresh();}
+async function rest(s,path){await ensureFresh();const go=()=>fetch(s.url+"/rest/v1/"+path,{headers:{apikey:s.key,Authorization:"Bearer "+s.token}});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}if(r.status===401){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}const d=await r.json();if(!r.ok)throw new Error(d.message||d.hint||"ดึงข้อมูลไม่สำเร็จ");return d;}
 async function safeRest(s,path){try{return await rest(s,path);}catch(e){return [];}}
-async function send(s,method,path,body,prefer){let r;try{r=await fetch(s.url+"/rest/v1/"+path,{method,headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer||"return=representation"},body:body?JSON.stringify(body):undefined});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"ทำรายการไม่สำเร็จ");return d;}
+async function send(s,method,path,body,prefer){await ensureFresh();const go=()=>fetch(s.url+"/rest/v1/"+path,{method,headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json",Prefer:prefer||"return=representation"},body:body?JSON.stringify(body):undefined});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"ทำรายการไม่สำเร็จ");return d;}
 const post=(s,p,b,pr)=>send(s,"POST",p,b,pr);
 const patch=(s,p,b)=>send(s,"PATCH",p,b,"return=minimal");
 const del=(s,p)=>send(s,"DELETE",p,null,"return=minimal");
@@ -288,13 +298,15 @@ function computeFacts(data){
 }
 const app=document.getElementById("app");
 function renderLogin(prefill={},err=""){
+  if(!CONFIG_READY()){app.innerHTML=`<div class="loginwrap"><div class="loginbox"><div class="brand">Salitdok OS</div><div class="brandsub">ยังไม่ได้ตั้งค่าระบบ</div><div class="card"><div class="err" style="margin:0">ยังไม่ได้ใส่ค่า Supabase ในไฟล์ — เปิด index.html แล้วแก้ที่ส่วน <b>CONFIG</b> ด้านบนสุดของ &lt;script&gt; ให้ใส่ SUPABASE_URL และ SUPABASE_ANON_KEY ของร้าน แล้วอัปโหลดใหม่</div></div></div></div>`;return;}
   app.innerHTML=`<div class="loginwrap"><div class="loginbox"><div class="brand">Salitdok OS</div><div class="brandsub">ศูนย์บัญชาการร้านอาหาร</div>
-    <div class="card">${field("url","Supabase URL","Settings → API → Project URL","https://xxxx.supabase.co",prefill.url)}${field("key","anon public key","คีย์สาธารณะ ปลอดภัยที่จะใช้ฝั่งแอป","eyJhbGciOi...",prefill.key)}${field("email","อีเมล","","owner@salitdok.app",prefill.email,"email")}${field("password","รหัสผ่าน","","••••••••","","password")}
+    <div class="card">${field("email","อีเมล","","owner@salitdok.app",prefill.email,"email")}${field("password","รหัสผ่าน","","••••••••","","password")}
     <div id="err" class="err ${err?"":"hidden"}">${esc(err)}</div><button id="go" class="btn">เข้าสู่ระบบ</button></div></div></div>`;
   document.getElementById("go").onclick=doLogin;
+  const pw=document.getElementById("f_password");if(pw)pw.onkeydown=e=>{if(e.key==="Enter")doLogin();};
 }
 function field(id,label,hint,ph,v="",type="text"){return `<label class="field"><div class="flabel">${label}</div>${hint?`<div class="fhint">${hint}</div>`:""}<input class="finput" id="f_${id}" type="${type}" placeholder="${ph}" value="${esc(v)}" autocapitalize="none" autocorrect="off" spellcheck="false"/></label>`;}
-async function doLogin(){const url=val("f_url").trim().replace(/\/+$/,""),key=val("f_key").trim(),email=val("f_email").trim(),password=val("f_password");const btn=document.getElementById("go"),e=document.getElementById("err");e.classList.add("hidden");if(!url||!key||!email||!password){e.textContent="กรอกให้ครบทุกช่อง";e.classList.remove("hidden");return;}btn.disabled=true;btn.textContent="กำลังเข้าสู่ระบบ…";try{const token=await signIn(url,key,email,password);state.s={url,key,email,token};await reloadData();localStorage.setItem(LS,JSON.stringify(state.s));navigate("dash");}catch(err){e.textContent=err.message;e.classList.remove("hidden");btn.disabled=false;btn.textContent="เข้าสู่ระบบ";}}
+async function doLogin(){const email=val("f_email").trim(),password=val("f_password");const btn=document.getElementById("go"),e=document.getElementById("err");e.classList.add("hidden");if(!email||!password){e.textContent="กรอกอีเมลและรหัสผ่าน";e.classList.remove("hidden");return;}btn.disabled=true;btn.textContent="กำลังเข้าสู่ระบบ…";try{await signIn(email,password);await reloadData();navigate("dash");}catch(err){e.textContent=err.message;e.classList.remove("hidden");btn.disabled=false;btn.textContent="เข้าสู่ระบบ";}}
 
 function shell(active,inner){return `<div class="content">${inner}</div><div class="nav">
   <button class="navbtn ${active==="dash"?"active":""}" data-nav="dash"><span class="navico">🏠</span>หน้าหลัก</button>
@@ -723,7 +735,14 @@ async function saveOrder(){
 }
 
 function doLogout(msg){localStorage.removeItem(LS);const s=state.s||{};state.s=null;state.data=null;renderLogin({url:s.url,key:s.key,email:s.email},msg||"");}
-(async function(){let saved=null;try{saved=JSON.parse(localStorage.getItem(LS)||"null");}catch(e){}if(saved&&saved.token){state.s=saved;try{await reloadData();navigate("dash");return;}catch(e){renderLogin({url:saved.url,key:saved.key,email:saved.email});return;}}renderLogin();})();
+(async function(){
+  if(!CONFIG_READY()){renderLogin();return;}
+  let saved=null;try{saved=JSON.parse(localStorage.getItem(LS)||"null");}catch(e){}
+  if(saved&&saved.token){state.s={url:CONFIG.SUPABASE_URL,key:CONFIG.SUPABASE_ANON_KEY,email:saved.email,token:saved.token,refresh:saved.refresh,expiresAt:saved.expiresAt||0};
+    try{await reloadData();navigate("dash");return;}
+    catch(e){if(e.code===401)localStorage.removeItem(LS);renderLogin({email:saved.email});return;}}
+  renderLogin();
+})();
 </script>
 </body>
 </html>
