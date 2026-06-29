@@ -257,7 +257,8 @@ async function loadMaster(s,storeId){
   const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${storeId}`);
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
   const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
-  return {menu,addons,links,inv,purchases,recipes,cats};
+  const pkgDefaults=await safeRest(s,`packaging_defaults?select=id,source,inventory_item_id,menu_item_id,qty,toggle_key,active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -265,7 +266,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -487,7 +488,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
+const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -518,6 +519,8 @@ function renderSettings(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ตั้งค่า</div></div>
     <div class="setrow"><div class="mmname">${esc(state.data.store.name)}</div><div class="mmsub">${esc(state.s.email)}</div></div>
     <div class="block"><div class="cmeta">ต้นทุน/กำไรคำนวณจากสูตรวัตถุดิบ × ราคาเฉลี่ยของเดือน (ตั้งในแท็บเมนู → วัตถุดิบ และในแต่ละเมนู → สูตรต้นทุน)</div></div>
+    <div class="blocktitle">ต้นทุน</div>
+    <div class="block"><button class="ghostbtn" id="pkgdef" style="margin-top:0">📦 ค่าเริ่มต้นบรรจุภัณฑ์ (ตามช่องทาง/เมนู)</button><div class="cmeta" style="margin-top:8px">ตั้งว่าแต่ละช่องทาง/เมนู ให้เติมกล่อง/ช้อน/ถุง อะไรอัตโนมัติตอนเปิดออเดอร์ — แก้เองได้เสมอก่อนบันทึก</div></div>
     <div class="blocktitle">การตรวจสอบ</div>
     <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
@@ -525,9 +528,63 @@ function renderSettings(){
     <div class="block"><button class="ghostbtn" id="logout" style="margin-top:0">ออกจากระบบ</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("dash");
   document.getElementById("audit").onclick=()=>renderAuditLog();
+  document.getElementById("pkgdef").onclick=renderPackagingDefaults;
   document.getElementById("clear").onclick=renderClearConfirm;
   document.getElementById("logout").onclick=()=>doLogout();
 }
+// ===== Packaging Defaults (2.5b-①) =====
+const SRC_DEF=[["__all","ทุกช่องทาง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];
+const srcDefLabel=v=>(SRC_DEF.find(x=>x[0]===(v||"__all"))||["__all","ทุกช่องทาง"])[1];
+function pkgItems(){return state.data.inv.filter(i=>(i.kind||"food")!=="food");}
+function renderPackagingDefaults(){
+  const im=ingMap(),mm=menuMap(),defs=(state.data.pkgDefaults||[]);
+  const rows=defs.map(d=>{const it=im[d.inventory_item_id],k=it?(it.kind||"supply"):"supply",scope=srcDefLabel(d.source)+(d.menu_item_id&&mm[d.menu_item_id]?` · เฉพาะเมนู ${esc(mm[d.menu_item_id].name)}`:"");
+    return `<button class="mmrow" data-def="${d.id}" style="width:100%;text-align:left"><span style="width:8px;height:8px;border-radius:99px;background:${KIND_COLOR[k]};flex:none"></span><div class="mmmain"><div class="mmname">${esc(it?it.name:"?")} ×${fmt2(d.qty)} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${d.active===false?` <span class="badge" style="background:#9993;color:#777;font-size:10px">ปิด</span>`:""}</div><div class="mmsub">${scope}</div></div><span class="chev">›</span></button>`;}).join("");
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ค่าเริ่มต้นบรรจุภัณฑ์</div><button class="addtop" id="addDef">＋ เพิ่ม</button></div>
+    <div class="block"><div class="cmeta">ตอนเปิดออเดอร์ ระบบจะเติมรายการเหล่านี้ให้อัตโนมัติตามช่องทาง/เมนู แล้วคุณแก้/เพิ่ม/ลบ/เปลี่ยนขนาดได้ก่อนบันทึก</div></div>
+    <div class="block" style="padding-top:6px">${rows||`<div class="empty">ยังไม่มีค่าเริ่มต้น — กด “＋ เพิ่ม”<br>เช่น ทุกช่องทาง: กล่อง 750ml ×1, ช้อน ×1, ถุงซิป ×1</div>`}</div></div>`;
+  document.getElementById("back").onclick=()=>navigate("settings");
+  document.getElementById("addDef").onclick=()=>renderPackagingDefaultEdit(null);
+  document.querySelectorAll("[data-def]").forEach(b=>b.onclick=()=>renderPackagingDefaultEdit(defs.find(d=>d.id===b.dataset.def)));
+}
+function renderPackagingDefaultEdit(def){
+  const isNew=!def,items=pkgItems(),menus=state.data.menu;
+  if(!items.length){app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ค่าเริ่มต้นบรรจุภัณฑ์</div></div><div class="block"><div class="empty">ยังไม่มีรายการบรรจุภัณฑ์/วัสดุ<br>ไปเพิ่มที่ เมนู → ต้นทุน/สต็อก (เลือกประเภท บรรจุภัณฑ์/วัสดุสิ้นเปลือง) ก่อน</div></div></div>`;document.getElementById("back").onclick=renderPackagingDefaults;return;}
+  const curItem=def?def.inventory_item_id:items[0].id,curSrc=def?(def.source||"__all"):"__all",curMenu=def&&def.menu_item_id?def.menu_item_id:"__all",curQty=def?def.qty:1,curActive=def?def.active!==false:true;
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่มค่าเริ่มต้น":"แก้ไขค่าเริ่มต้น"}</div></div>
+    <div class="block">
+      <div class="fhint">รายการ (บรรจุภัณฑ์/วัสดุสิ้นเปลือง)</div>
+      <select id="dfItem" class="nin" style="margin-top:6px">${items.map(i=>`<option value="${i.id}" ${i.id===curItem?"selected":""}>${esc(i.name)} (${KIND_TH[i.kind||"supply"]})</option>`).join("")}</select>
+      <div class="fhint" style="margin-top:12px">จำนวนต่อออเดอร์</div>
+      <input id="dfQty" class="nin" style="margin-top:6px" inputmode="decimal" value="${curQty}"/>
+      <div class="fhint" style="margin-top:12px">ใช้กับช่องทาง</div>
+      <div class="chips" id="dfSrc" style="margin-top:6px">${SRC_DEF.map(([v,l])=>`<button type="button" class="chip sm ${v===curSrc?"active":""}" data-src="${v}">${l}</button>`).join("")}</div>
+      <div class="fhint" style="margin-top:12px">เฉพาะเมนู (ถ้าเลือก จะเติมเฉพาะเมื่อออเดอร์มีเมนูนี้)</div>
+      <select id="dfMenu" class="nin" style="margin-top:6px"><option value="__all" ${curMenu==="__all"?"selected":""}>ทุกเมนู</option>${menus.map(m=>`<option value="${m.id}" ${m.id===curMenu?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
+      <div class="swrow"><div class="swlabel">เปิดใช้</div><button class="sw ${curActive?"on":""}" id="dfActive"><span class="knob"></span></button></div>
+    </div>
+    <div style="height:80px"></div>
+    <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่ม":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบ</button>`:""}</div></div>`;
+  document.getElementById("back").onclick=renderPackagingDefaults;
+  document.querySelectorAll("#dfSrc .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#dfSrc .chip").forEach(x=>x.classList.toggle("active",x===c)));
+  let active=curActive;const sw=document.getElementById("dfActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
+  document.getElementById("save").onclick=()=>savePackagingDefault(def,active);
+  if(!isNew)document.getElementById("del").onclick=()=>deletePackagingDefault(def);
+}
+async function savePackagingDefault(def,active){
+  const inventory_item_id=val("dfItem"),qty=parseFloat(val("dfQty"))||0;
+  if(qty<=0){toast("ใส่จำนวนมากกว่า 0");return;}
+  const sc=document.querySelector("#dfSrc .chip.active"),source=sc&&sc.dataset.src!=="__all"?sc.dataset.src:null;
+  const mv=val("dfMenu"),menu_item_id=mv&&mv!=="__all"?mv:null;
+  const it=ingMap()[inventory_item_id];const body={store_id:state.data.store.id,source,inventory_item_id,menu_item_id,qty,active};
+  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+  try{
+    if(def)await withReason("",()=>patch(state.s,`packaging_defaults?id=eq.${def.id}`,body));
+    else await withReason("",()=>post(state.s,"packaging_defaults",{...body,sort_order:(state.data.pkgDefaults||[]).length+1},"return=minimal"));
+    await reloadData();toast("บันทึกแล้ว");renderPackagingDefaults();
+  }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+}
+async function deletePackagingDefault(def){try{await withReason("",()=>del(state.s,`packaging_defaults?id=eq.${def.id}`));await reloadData();toast("ลบแล้ว");renderPackagingDefaults();}catch(e){toast(e.message);}}
 function renderClearConfirm(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ล้างข้อมูล</div></div>
     <div class="warnbox"><b>ยืนยันล้างข้อมูลทั้งหมด?</b><br>ลบถาวร: ออเดอร์ · ลูกค้า · เมนู · Add-on · วัตถุดิบ<br>เก็บไว้: บัญชีผู้ใช้ · ร้าน · แพ็กเกจ<br><br>ทำแล้วย้อนกลับไม่ได้</div>
@@ -751,8 +808,8 @@ function renderMenuEdit(m){
       <input id="miCost" class="nin" placeholder="ต้นทุน/จาน แบบกรอกเอง (ถ้าไม่ใช้สูตร)" inputmode="decimal" value="${showManual?Number(m.cost):""}"/>
       <div class="swrow"><div class="swlabel">เปิดขาย</div><button class="sw ${(!m||m.is_active!==false)?"on":""}" id="miActive"><span class="knob"></span></button></div>
     </div>
-    <div class="blocktitle">สูตรต้นทุน (COG) — วัตถุดิบ + บรรจุภัณฑ์ ต่อ 1 จาน</div>
-    <div class="block"><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบ/บรรจุภัณฑ์</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
+    <div class="blocktitle">สูตรอาหาร (Food Cost) — เฉพาะวัตถุดิบอาหารต่อ 1 จาน</div>
+    <div class="block"><div class="cmeta" style="margin-bottom:8px">📦 บรรจุภัณฑ/ช้อน/ถุง คิดที่ระดับออเดอร์ (เลือกตอนสั่ง) ไม่ใส่ในสูตร</div><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบอาหาร</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
     <div style="height:90px"></div>
     ${reasonBlock("rsnMenu")}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มเมนู":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="copy">📄 คัดลอกเมนูนี้</button><button class="delbtn" id="del">ลบเมนูนี้</button>`:""}</div></div>`;
@@ -785,11 +842,12 @@ function updateRecipeSum(){
 function toggleIngPicker(){
   const box=document.getElementById("pickerBox");
   if(box.innerHTML){box.innerHTML="";return;}
-  if(!state.data.inv.length){box.innerHTML=`<div class="cmeta" style="margin-top:8px">ยังไม่มีวัตถุดิบ/บรรจุภัณฑ์ — ไปเพิ่มที่แท็บเมนู → ต้นทุน/สต็อก ก่อน</div>`;return;}
+  const foods=state.data.inv.filter(i=>(i.kind||"food")==="food");
+  if(!foods.length){box.innerHTML=`<div class="cmeta" style="margin-top:8px">ยังไม่มีวัตถุดิบอาหาร — ไปเพิ่มที่แท็บเมนู → ต้นทุน/สต็อก (เลือกประเภท “อาหาร”) ก่อน</div>`;return;}
   const used=new Set(editingRecipe.map(r=>r.item_id));
-  const avail=state.data.inv.filter(i=>!used.has(i.id));
-  const groups=["food","packaging","supply"].map(k=>{const items=avail.filter(i=>(i.kind||"food")===k);if(!items.length)return "";return `<div class="cmeta" style="margin:6px 4px 2px;font-weight:700;color:${KIND_COLOR[k]}">${KIND_TH[k]}</div>`+items.map(i=>`<button class="pickitem" data-add="${i.id}">${esc(i.name)} <span class="q" style="color:var(--slate)">(${esc(i.base_unit)})</span></button>`).join("");}).join("");
-  box.innerHTML=`<div class="picker">${groups||`<div class="cmeta">เพิ่มครบทุกรายการแล้ว</div>`}</div>`;
+  const avail=foods.filter(i=>!used.has(i.id));
+  const list=avail.map(i=>`<button class="pickitem" data-add="${i.id}">${esc(i.name)} <span class="q" style="color:var(--slate)">(${esc(i.base_unit)})</span></button>`).join("");
+  box.innerHTML=`<div class="picker"><div class="cmeta" style="margin:2px 4px 6px">📦 บรรจุภัณฑ์/วัสดุสิ้นเปลือง ย้ายไปคิดที่ระดับออเดอร์แล้ว — สูตรนี้ใส่เฉพาะวัตถุดิบอาหาร</div>${list||`<div class="cmeta">เพิ่มครบทุกวัตถุดิบอาหารแล้ว</div>`}</div>`;
   box.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{editingRecipe.push({item_id:b.dataset.add,qty:1});box.innerHTML="";renderRecipeRows();});
 }
 async function saveMenuItem(active){
@@ -827,8 +885,8 @@ function renderAddonEdit(a){
   const lc=new Set(state.data.links.filter(l=>a&&l.addon_id===a.id&&l.category).map(l=>l.category));
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่ม Add-on":"แก้ไข Add-on"}</div></div>
     <div class="block"><input id="adName" class="nin" style="margin-top:0" placeholder="ชื่อ เช่น ไข่ดาว / เพิ่มข้าว" value="${esc(a?a.name:"")}" autocapitalize="words"/><input id="adPrice" class="nin" placeholder="ราคาขาย (บาท)" inputmode="decimal" value="${a?Number(a.price):""}"/><div class="swrow"><div class="swlabel">เปิดใช้</div><button class="sw ${(!a||a.is_active!==false)?"on":""}" id="adActive"><span class="knob"></span></button></div></div>
-    <div class="blocktitle">สูตรต้นทุน (COG) — วัตถุดิบ + บรรจุภัณฑ์</div>
-    <div class="block"><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบ/บรรจุภัณฑ์</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
+    <div class="blocktitle">สูตรอาหาร (Food Cost) — เฉพาะวัตถุดิบอาหาร</div>
+    <div class="block"><div class="cmeta" style="margin-bottom:8px">📦 บรรจุภัณฑ/ช้อน/ถุง คิดที่ระดับออเดอร์ ไม่ใส่ในสูตร</div><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบอาหาร</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
     <div class="blocktitle">ใช้กับหมวดหมู่ (เลือกได้หลายอัน)</div>
     <div class="block"><div class="chips" id="catChips">${cats.length?cats.map(c=>`<button class="chip sm ${lc.has(c)?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join(""):`<span class="cmeta">ยังไม่มีหมวดหมู่ — ตั้งหมวดให้เมนูก่อน</span>`}</div></div>
     <div class="blocktitle">หรือใช้กับเมนูเฉพาะ</div>
