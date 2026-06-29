@@ -233,7 +233,7 @@ async function loadStore(s){
 }
 async function loadOrders(s,storeId,sinceISO){
   const since=sinceISO||new Date(Date.now()-35*DAY).toISOString();
-  const q=ext=>`orders?select=id,customer_id,source,net_total,ordered_at,${ext}&store_id=eq.${storeId}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
+  const q=ext=>`orders?select=id,customer_id,source,net_total,ordered_at,food_cost_snapshot,packaging_cost_snapshot,consumable_cost_snapshot,cogs_snapshot,${ext}&store_id=eq.${storeId}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
   const oxA=q(`order_items(menu_item_id,item_name,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(name,quantity,food_cost_snapshot,pkg_cost_snapshot))`);
   const oxB=q(`order_items(menu_item_id,item_name,quantity,cost_snapshot,order_item_addons(name,quantity))`);
   const oxC=q(`order_items(menu_item_id,item_name,quantity,order_item_addons(name,quantity))`);
@@ -270,7 +270,7 @@ async function loadAll(s){
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
-  const a=`orders?select=id,customer_id,source,status,ordered_at,net_total,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(addon_id,name,price,quantity,food_cost_snapshot,pkg_cost_snapshot))&id=eq.${id}&limit=1`;
+  const a=`orders?select=id,customer_id,source,status,ordered_at,net_total,food_cost_snapshot,packaging_cost_snapshot,consumable_cost_snapshot,cogs_snapshot,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(addon_id,name,price,quantity,food_cost_snapshot,pkg_cost_snapshot)),order_packaging(inventory_item_id,kind,qty,unit_cost_snapshot,line_cost_snapshot)&id=eq.${id}&limit=1`;
   const b=`orders?select=id,customer_id,source,status,ordered_at,net_total,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,order_item_addons(addon_id,name,price,quantity))&id=eq.${id}&limit=1`;
   let r;try{r=await rest(s,a);}catch(e){r=await rest(s,b);}return r[0];
 }
@@ -327,7 +327,7 @@ function ingCostPerUnit(itemId,mkey){
 const recipeRowsFor=menuId=>state.data.recipes.filter(r=>r.menu_item_id===menuId);
 const recipeRowsForAddon=addonId=>state.data.recipes.filter(r=>r.addon_id===addonId);
 const invKindOf=itemId=>{const it=ingMap()[itemId];return it?(it.kind||"food"):"food";};
-function splitCostRows(rows,mkey){let food=0,pkg=0;for(const r of rows){const c=Number(r.qty)*ingCostPerUnit(r.item_id,mkey);if(invKindOf(r.item_id)==="food")food+=c;else pkg+=c;}return {food,pkg,total:food+pkg};}
+function splitCostRows(rows,mkey){let food=0;for(const r of rows){if(invKindOf(r.item_id)!=="food")continue;food+=Number(r.qty)*ingCostPerUnit(r.item_id,mkey);}return {food,pkg:0,total:food};}
 function menuCostSplit(menuId,mkey){const rows=recipeRowsFor(menuId).map(r=>({item_id:r.item_id,qty:Number(r.qty)}));if(rows.length)return splitCostRows(rows,mkey);const mm=menuMap()[menuId];const c=(mm&&mm.cost!=null&&mm.cost!=="")?Number(mm.cost):0;return {food:c,pkg:0,total:c};}
 function addonCostSplit(addonId,mkey){return splitCostRows(recipeRowsForAddon(addonId).map(r=>({item_id:r.item_id,qty:Number(r.qty)})),mkey);}
 const r2=n=>Math.round((n||0)*100)/100;
@@ -342,15 +342,19 @@ function computeFacts(data){
   const dPct=(a,b)=>b>0?Math.round((a-b)/b*100):null;
   const deltaY=dPct(t.sales,y.sales),deltaW=dPct(t.sales,w.sales),avgBill=t.count?t.sales/t.count:0;
   const spark=[];for(let i=6;i>=0;i--){const d=bkkDate(new Date(Date.now()-i*DAY));spark.push({d,sales:(byDay[d]&&byDay[d].sales)||0,isToday:d===today});}
-  let foodToday=0,foodMonth=0,pkgToday=0,pkgMonth=0,salesMonth=0;const todayIds=new Set();
+  let foodToday=0,foodMonth=0,pkgToday=0,pkgMonth=0,conToday=0,conMonth=0,salesMonth=0;const todayIds=new Set();
   for(const o of orders){const dk=bkkDate(new Date(o.ordered_at)),mk=dk.slice(0,7),isToday=dk===today,isMonth=mk===curMonth;
     if(isMonth)salesMonth+=Number(o.net_total)||0;if(isToday&&o.customer_id)todayIds.add(o.customer_id);
-    for(const it of o.order_items||[]){const q=Number(it.quantity)||0,fs=Number(it.food_cost_snapshot)||0,ps=Number(it.pkg_cost_snapshot)||0,leg=Number(it.cost_snapshot)||0;
-      let food=(fs||ps)?fs:leg,pkg=ps;
-      for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;food+=((Number(ad.food_cost_snapshot)||0)*aq)/(q||1);pkg+=((Number(ad.pkg_cost_snapshot)||0)*aq)/(q||1);}
-      food*=q;pkg*=q;
-      if(isToday){foodToday+=food;pkgToday+=pkg;}if(isMonth){foodMonth+=food;pkgMonth+=pkg;}}}
-  const cogsToday=foodToday+pkgToday,cogsMonth=foodMonth+pkgMonth;
+    let food=0,pkg=0,con=0,cogs=Number(o.cogs_snapshot)||0;
+    if(cogs>0){food=Number(o.food_cost_snapshot)||0;pkg=Number(o.packaging_cost_snapshot)||0;con=Number(o.consumable_cost_snapshot)||0;}
+    else{ // fallback ออเดอร์เก่าที่ยังไม่มี rollup — คำนวณจาก snapshot รายบรรทัด (packaging รวมใน pkg)
+      for(const it of o.order_items||[]){const q=Number(it.quantity)||0,fs=Number(it.food_cost_snapshot)||0,ps=Number(it.pkg_cost_snapshot)||0,leg=Number(it.cost_snapshot)||0;
+        let f=(fs||ps)?fs:leg,p=ps;
+        for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;f+=((Number(ad.food_cost_snapshot)||0)*aq)/(q||1);p+=((Number(ad.pkg_cost_snapshot)||0)*aq)/(q||1);}
+        food+=f*q;pkg+=p*q;}
+    }
+    if(isToday){foodToday+=food;pkgToday+=pkg;conToday+=con;}if(isMonth){foodMonth+=food;pkgMonth+=pkg;conMonth+=con;}}
+  const cogsToday=foodToday+pkgToday+conToday,cogsMonth=foodMonth+pkgMonth+conMonth;
   const gpToday=t.sales-cogsToday,fcToday=t.sales>0?Math.round(foodToday/t.sales*100):0;
   const gpMonth=salesMonth-cogsMonth,fcMonth=salesMonth>0?Math.round(foodMonth/salesMonth*100):0;
   const custById=Object.fromEntries(customers.map(c=>[c.id,c]));let newToday=0,returningToday=0;
@@ -376,7 +380,7 @@ function computeFacts(data){
   if(newCust)ins.push({tone:"good",icon:"✨",title:`ลูกค้าใหม่: ${newCust.name}`,body:"เพิ่งสั่งครั้งแรก — ชวนกลับมาซื้อซ้ำ",go:"ดูลูกค้า",action:{type:"customer",cid:newCust.id}});
   if(topMenu)ins.push({tone:"good",icon:"🔥",title:`ดันเมนู ${topMenu.name}`,body:`ขายดีสุด ${topMenu.qty} จาน/14 วัน`,go:"ไปจัดการเมนู",action:{type:"menu"}});
   if(!ins.length)ins.push({tone:"good",icon:"✅",title:"วันนี้ยังไม่มีเรื่องด่วน",body:"ทุกอย่างปกติดี",go:null,action:null});
-  return {today:t,avgBill,deltaY,deltaW,spark,cogsToday,gpToday,fcToday,foodToday,pkgToday,salesMonth,cogsMonth,gpMonth,fcMonth,foodMonth,pkgMonth,newToday,returningToday,lapsedCount,topMenu,falling,topAddon,s7,s30,channels,new30,repeatCount,topMenus,topAddons,insights:ins.slice(0,4)};
+  return {today:t,avgBill,deltaY,deltaW,spark,cogsToday,gpToday,fcToday,foodToday,pkgToday,conToday,salesMonth,cogsMonth,gpMonth,fcMonth,foodMonth,pkgMonth,conMonth,newToday,returningToday,lapsedCount,topMenu,falling,topAddon,s7,s30,channels,new30,repeatCount,topMenus,topAddons,insights:ins.slice(0,4)};
 }
 const app=document.getElementById("app");
 function renderLogin(prefill={},err=""){
@@ -423,7 +427,8 @@ function renderDash(){
     </div>
     <div class="sec"><div class="sectitle">🔥 วันนี้</div>
       <div class="kpi3">${kpi("ออเดอร์",f.today.count,"")}${kpi("เฉลี่ย/บิล",fmtTHB(f.avgBill),"")}${kpi("กำไรขั้นต้น",fmtTHB(f.gpToday),"ยอด − COGS")}</div>
-      <div class="kpi3">${kpi("Food Cost",fmtTHB(f.foodToday),"FC "+f.fcToday+"%")}${kpi("Packaging",fmtTHB(f.pkgToday),"บรรจุภัณฑ์")}${kpi("COGS",fmtTHB(f.cogsToday),"อาหาร+บรรจุภัณฑ์")}</div>
+      <div class="kpi3">${kpi("Food Cost",fmtTHB(f.foodToday),"FC "+f.fcToday+"%")}${kpi("Packaging",fmtTHB(f.pkgToday),"บรรจุภัณฑ์")}${kpi("Consumable",fmtTHB(f.conToday),"วัสดุสิ้นเปลือง")}</div>
+      <div class="cmeta" style="margin-top:8px;text-align:center">COGS วันนี้ ${fmtTHB(f.cogsToday)} · กำไรขั้นต้น <b style="color:${BRAND.up}">${fmtTHB(f.gpToday)}</b></div>
       <div class="grid">
         ${stat("เมนูขายดี",f.topMenu?f.topMenu.name:"—",f.topMenu?`${f.topMenu.qty} จาน/14วัน`:"",BRAND.up)}
         ${stat("เมนูยอดตก",f.falling?f.falling.name:"ไม่มี",f.falling?`${f.falling.prev}→${f.falling.last} จาน`:"ทุกเมนูยังนิ่ง",BRAND.down)}
@@ -438,6 +443,7 @@ function renderDash(){
         <div class="anum"><div class="anumlabel">COGS เดือนนี้</div><div class="anumval tnum">${fmtTHB(f.cogsMonth)}</div></div>
         <div class="anum"><div class="anumlabel">ต้นทุนอาหารเดือนนี้</div><div class="anumval tnum">${fmtTHB(f.foodMonth)}</div></div>
         <div class="anum"><div class="anumlabel">ต้นทุนบรรจุภัณฑ์เดือนนี้</div><div class="anumval tnum">${fmtTHB(f.pkgMonth)}</div></div>
+        <div class="anum"><div class="anumlabel">ต้นทุนวัสดุสิ้นเปลืองเดือนนี้</div><div class="anumval tnum">${fmtTHB(f.conMonth)}</div></div>
         <div class="anum"><div class="anumlabel">กำไรขั้นต้นเดือนนี้</div><div class="anumval tnum">${fmtTHB(f.gpMonth)}</div></div>
         <div class="anum"><div class="anumlabel">Food Cost เดือนนี้</div><div class="anumval">${f.fcMonth}%</div></div>
         <div class="anum"><div class="anumlabel">ยอดขาย 7 วัน</div><div class="anumval tnum">${fmtTHB(f.s7)}</div></div>
@@ -624,11 +630,12 @@ async function renderOrderDetail(id){
   const time=new Intl.DateTimeFormat("th-TH",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(o.ordered_at));
   const lines=(o.order_items||[]).map(it=>{const ad=(it.order_item_addons||[]).map(a=>`<div class="cmeta" style="margin-left:8px">+ ${esc(a.name)} ${fmtTHB(a.price)}</div>`).join("");return `<div style="margin-bottom:8px"><div class="row"><div class="mname">${esc(it.item_name)} ×${it.quantity}</div><div class="tnum">${fmtTHB(it.unit_price*it.quantity)}</div></div>${ad}</div>`;}).join("");
   const cancelled=o.status==="cancelled";
-  let oFood=0,oPkg=0;for(const it of o.order_items||[]){const q=Number(it.quantity)||0,fs=Number(it.food_cost_snapshot)||0,ps=Number(it.pkg_cost_snapshot)||0,leg=Number(it.cost_snapshot)||0;let food=(fs||ps)?fs:leg,pkg=ps;for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;food+=((Number(ad.food_cost_snapshot)||0)*aq)/(q||1);pkg+=((Number(ad.pkg_cost_snapshot)||0)*aq)/(q||1);}oFood+=food*q;oPkg+=pkg*q;}
-  const oCogs=oFood+oPkg,oProfit=Number(o.net_total)-oCogs,hasCost=oCogs>0;
+  let oFood=Number(o.food_cost_snapshot)||0,oPkg=Number(o.packaging_cost_snapshot)||0,oCon=Number(o.consumable_cost_snapshot)||0,oCogs=Number(o.cogs_snapshot)||0;
+  if(oCogs<=0){oFood=0;oPkg=0;oCon=0;for(const it of o.order_items||[]){const q=Number(it.quantity)||0,fs=Number(it.food_cost_snapshot)||0,ps=Number(it.pkg_cost_snapshot)||0,leg=Number(it.cost_snapshot)||0;let food=(fs||ps)?fs:leg,pkg=ps;for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;food+=((Number(ad.food_cost_snapshot)||0)*aq)/(q||1);pkg+=((Number(ad.pkg_cost_snapshot)||0)*aq)/(q||1);}oFood+=food*q;oPkg+=pkg*q;}oCogs=oFood+oPkg+oCon;}
+  const oProfit=Number(o.net_total)-oCogs,hasCost=oCogs>0;
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายละเอียดออเดอร์</div></div>
     <div class="block"><div class="selbox"><div class="row"><b>${esc(o.customers?o.customers.name:"ไม่ระบุลูกค้า")}</b><div>${srcBadge(o.source)}</div></div><div class="cmeta" style="margin-top:4px">${time}${cancelled?" · <span style='color:#c0392b'>ยกเลิกแล้ว</span>":""}</div><div style="height:10px"></div>${lines}<div class="row" style="margin-top:8px;border-top:1px solid var(--line);padding-top:10px"><b>รวม</b><b class="tnum">${fmtTHB(o.net_total)}</b></div></div></div>
-    ${hasCost?`<div class="block"><div class="costsum"><div class="cmeta" style="margin-bottom:6px">ต้นทุน ณ วันที่ขาย (snapshot — ไม่เปลี่ยนตามราคาปัจจุบัน)</div><div class="row"><span>ต้นทุนอาหาร</span><b class="tnum">${fmtTHB(oFood)}</b></div><div class="row" style="margin-top:3px"><span>ต้นทุนบรรจุภัณฑ์</span><b class="tnum">${fmtTHB(oPkg)}</b></div><div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(oCogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(oProfit)}</b></div></div></div>`:""}
+    ${hasCost?`<div class="block"><div class="costsum"><div class="cmeta" style="margin-bottom:6px">ต้นทุน ณ วันที่ขาย (snapshot — ไม่เปลี่ยนตามราคาปัจจุบัน)</div><div class="row"><span>ต้นทุนอาหาร</span><b class="tnum">${fmtTHB(oFood)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์</span><b class="tnum">${fmtTHB(oPkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง</span><b class="tnum">${fmtTHB(oCon)}</b></div><div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(oCogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(oProfit)}</b></div></div></div>`:""}
     <div class="block"><button class="savebtn" id="edit" style="height:50px">แก้ไขออเดอร์</button>${cancelled?`<button class="ghostbtn" id="restore">↩︎ กู้คืนออเดอร์</button>`:`<button class="delbtn" id="cancelo" style="margin-top:10px">ลบออเดอร์ (เปลี่ยนเป็นยกเลิก)</button>`}</div></div>`;
   document.getElementById("back").onclick=()=>navigate("orders");
   document.getElementById("edit").onclick=()=>openEditOrder(o);
@@ -1005,6 +1012,7 @@ function openEditOrder(o){
   draft={editId:o.id,source:o.source||"manual",cart:{},orderedAt:toLocalInput(new Date(o.ordered_at)),customer:{mode:"new"}};
   if(o.customer_id){const c=state.data.customers.find(x=>x.id===o.customer_id);draft.customer=c?{mode:"existing",id:c.id,name:c.name,c}:{mode:"existing",id:o.customer_id,name:(o.customers&&o.customers.name)||"ลูกค้า",c:{name:(o.customers&&o.customers.name)||"ลูกค้า",total_orders:0,total_spent:0}};}
   for(const it of o.order_items||[]){const m=mm[it.menu_item_id];const addons={};for(const oia of it.order_item_addons||[]){const a=am[oia.addon_id];if(oia.addon_id)addons[oia.addon_id]={name:a?a.name:oia.name,price:a?Number(a.price):Number(oia.price)};}draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?Number(m.price):Number(it.unit_price),qty:Number(it.quantity)||1,addons};}
+  draft.packaging=(o.order_packaging||[]).map(p=>({item_id:p.inventory_item_id,qty:Number(p.qty)}));draft.pkgRemoved={};draft.pkgLoaded=true;
   renderAdd();
 }
 function renderAdd(){
@@ -1021,13 +1029,19 @@ function renderAdd(){
     <div class="block"><input type="datetime-local" id="orderedAt" class="nin" style="margin-top:0" value="${esc(draft.orderedAt)}"><div class="cmeta" style="margin-top:6px">ปรับย้อนหลังได้ เช่น ใส่ออเดอร์ของวันที่ 1</div></div>
     <div class="blocktitle">ช่องทาง</div>
     <div class="block"><div class="chips" id="srcChips">${SRC.map(([k,l])=>`<button class="chip ${k===draft.source?"active":""}" data-src="${k}">${l}</button>`).join("")}</div></div>
+    <div class="blocktitle">📦 บรรจุภัณฑ์ / วัสดุสิ้นเปลือง</div>
+    <div class="block"><div class="cmeta" style="margin-bottom:8px">เติมอัตโนมัติตามช่องทาง/เมนู — แก้จำนวน เปลี่ยนกล่อง เพิ่ม/ลบ ได้ก่อนบันทึก</div><div id="pkgList"></div><button class="ghostbtn" id="addPkg" style="margin-top:0">＋ เพิ่มบรรจุภัณฑ์/วัสดุ</button><div id="pkgPicker"></div></div>
+    <div class="blocktitle">สรุปต้นทุน</div>
+    <div class="block"><div id="orderCost" class="costsum"></div></div>
     <div style="height:90px"></div>
     <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button></div></div>`;
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
   document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
-  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));mergePackagingDefaults();renderPackaging();});
+  document.getElementById("addPkg").onclick=togglePkgPicker;
+  document.getElementById("orderedAt").onchange=()=>{renderPackaging();};
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{const m=b.dataset.cm,curSeg=draft.customer.mode==="existing"?"search":draft.customer.mode;if(m===curSeg)return;if(m==="search")draft.customer={mode:"search"};else{const d=draft.customer;draft.customer={mode:m,name:d.name,phone:d.phone,birthdate:d.birthdate,note:d.note};}renderCustArea();});
-  renderCustArea();syncMenu();
+  renderCustArea();mergePackagingDefaults();renderPackaging();syncMenu();
 }
 function custFormHTML(){const d=draft.customer;return `<input id="cfName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า (จำเป็น)" value="${esc(d.name||"")}" autocapitalize="words"/><input id="cfPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี — ไว้ค้นเจอ/ทำโปรวันเกิด)" inputmode="tel" value="${esc(d.phone||"")}"/><div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="cfBirth" class="nin" style="margin-top:6px" value="${esc(d.birthdate||"")}"/><input id="cfNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)" value="${esc(d.note||"")}"/>`;}
 function wireCustForm(){const map={cfName:"name",cfPhone:"phone",cfBirth:"birthdate",cfNote:"note"};Object.entries(map).forEach(([id,k])=>{const el=document.getElementById(id);if(el)el.oninput=()=>{draft.customer[k]=el.value;};});}
@@ -1067,6 +1081,56 @@ async function loadRepeat(){
     syncMenu();rb.textContent="⟳ ใส่เมนูล่าสุดให้แล้ว";if(!items.length)toast("ลูกค้านี้ยังไม่มีออเดอร์ก่อนหน้า");
   }catch(e){toast(e.message);rb.textContent="⟳ สั่งเหมือนเดิม (เมนูล่าสุด)";}
 }
+function defaultPackagingLines(){
+  const cartMenus=new Set(Object.keys(draft.cart||{}));const out={};
+  for(const d of (state.data.pkgDefaults||[])){
+    if(d.active===false)continue;
+    if(d.source && d.source!==draft.source)continue;
+    if(d.menu_item_id && !cartMenus.has(d.menu_item_id))continue;
+    out[d.inventory_item_id]=(out[d.inventory_item_id]||0)+Number(d.qty||0);
+  }
+  return Object.entries(out).map(([item_id,qty])=>({item_id,qty}));
+}
+function mergePackagingDefaults(){
+  if(!draft.packaging)draft.packaging=[];
+  if(draft.pkgLoaded)return;
+  if(!draft.pkgRemoved)draft.pkgRemoved={};
+  const have=new Set(draft.packaging.map(p=>p.item_id));
+  for(const line of defaultPackagingLines()){
+    if(have.has(line.item_id)||draft.pkgRemoved[line.item_id])continue;
+    draft.packaging.push(line);
+  }
+}
+function pkgSaleMonth(){return monthOf(new Date(fromLocalInput(val("orderedAt")||draft.orderedAt)));}
+function renderPackaging(){
+  const box=document.getElementById("pkgList");if(!box)return;
+  const im=ingMap(),mk=pkgSaleMonth();
+  const rows=(draft.packaging||[]).map((p,i)=>{const it=im[p.item_id],k=it?(it.kind||"supply"):"supply",cu=ingCostPerUnit(p.item_id,mk);
+    return `<div class="recrow"><div class="recname">${esc(it?it.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span></div><input class="recqty tnum" id="pq_${i}" inputmode="decimal" value="${p.qty}"/><div class="recunit">${esc(it?it.base_unit:"")}</div><div class="reccost tnum" id="pc_${i}">฿${fmt2(p.qty*cu)}</div><button class="xbtn" data-prm="${i}">×</button></div>`;}).join("")
+    ||`<div class="cmeta">ยังไม่มีบรรจุภัณฑ์/วัสดุ — เลือกช่องทางเพื่อเติมอัตโนมัติ หรือกดเพิ่มด้านล่าง</div>`;
+  box.innerHTML=rows;
+  (draft.packaging||[]).forEach((p,i)=>{const q=document.getElementById("pq_"+i);if(q)q.oninput=()=>{draft.packaging[i].qty=parseFloat(q.value)||0;const it=im[draft.packaging[i].item_id],cu=ingCostPerUnit(draft.packaging[i].item_id,mk);const c=document.getElementById("pc_"+i);if(c)c.textContent="฿"+fmt2(draft.packaging[i].qty*cu);updateOrderCost();};});
+  box.querySelectorAll("[data-prm]").forEach(b=>b.onclick=()=>{const i=+b.dataset.prm,it=draft.packaging[i];if(it){draft.pkgRemoved=draft.pkgRemoved||{};draft.pkgRemoved[it.item_id]=1;draft.packaging.splice(i,1);}renderPackaging();updateOrderCost();});
+  updateOrderCost();
+}
+function togglePkgPicker(){
+  const box=document.getElementById("pkgPicker");if(!box)return;
+  if(box.innerHTML){box.innerHTML="";return;}
+  const items=pkgItems();if(!items.length){box.innerHTML=`<div class="cmeta" style="margin-top:8px">ยังไม่มีบรรจุภัณฑ์/วัสดุ — ไปเพิ่มที่ เมนู → ต้นทุน/สต็อก</div>`;return;}
+  const used=new Set((draft.packaging||[]).map(p=>p.item_id));
+  const groups=["packaging","supply"].map(k=>{const its=items.filter(i=>(i.kind||"supply")===k&&!used.has(i.id));if(!its.length)return "";return `<div class="cmeta" style="margin:6px 4px 2px;font-weight:700;color:${KIND_COLOR[k]}">${KIND_TH[k]}</div>`+its.map(i=>`<button class="pickitem" data-padd="${i.id}">${esc(i.name)} <span class="q" style="color:var(--slate)">(${esc(i.base_unit)})</span></button>`).join("");}).join("");
+  box.innerHTML=`<div class="picker">${groups||`<div class="cmeta">เพิ่มครบแล้ว</div>`}</div>`;
+  box.querySelectorAll("[data-padd]").forEach(b=>b.onclick=()=>{if(draft.pkgRemoved)delete draft.pkgRemoved[b.dataset.padd];draft.packaging.push({item_id:b.dataset.padd,qty:1});box.innerHTML="";renderPackaging();});
+}
+function orderFoodCost(mk){let food=0;for(const[id,e]of Object.entries(draft.cart||{})){if(!e.qty)continue;const sp=menuCostSplit(id,mk);let f=sp.food;for(const aid of Object.keys(e.addons||{}))f+=addonCostSplit(aid,mk).food;food+=f*e.qty;}return food;}
+function packagingSplit(mk){let pkg=0,con=0;const im=ingMap();for(const p of (draft.packaging||[])){const it=im[p.item_id],k=it?(it.kind||"supply"):"supply",c=Number(p.qty)*ingCostPerUnit(p.item_id,mk);if(k==="packaging")pkg+=c;else con+=c;}return {pkg,con};}
+function updateOrderCost(){
+  const el=document.getElementById("orderCost");if(!el)return;
+  const mk=pkgSaleMonth(),food=orderFoodCost(mk),{pkg,con}=packagingSplit(mk),cogs=food+pkg+con;
+  let sales=0;for(const[id,e]of Object.entries(draft.cart||{})){if(!e.qty)continue;const ad=Object.values(e.addons||{}).reduce((x,a)=>x+a.price,0);sales+=(e.price+ad)*e.qty;}
+  const profit=sales-cogs;
+  el.innerHTML=`<div class="row"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(food)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(pkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(con)}</b></div><div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(profit)}</b></div>`;
+}
 function syncMenu(){
   let total=0,count=0;
   for(const m of state.data.menu){const e=draft.cart[m.id],q=e?e.qty:0;
@@ -1080,6 +1144,7 @@ function syncMenu(){
   const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel");
   if(count>0){btn.disabled=false;lbl.textContent=`${draft.editId?"บันทึกการแก้ไข":"บันทึกออเดอร์"} · ${count} รายการ · ${fmtTHB(total)}`;}else{btn.disabled=true;lbl.textContent="เลือกเมนูก่อน";}
   btn.onclick=saveOrder;
+  mergePackagingDefaults();renderPackaging();
 }
 async function saveOrder(){
   const entries=Object.entries(draft.cart).filter(([id,e])=>e.qty>0);
@@ -1112,6 +1177,9 @@ async function saveOrder(){
     const byMenu={};for(const it of items)byMenu[it.menu_item_id]=it.id;
     const addonRows=[];for(const[id,e]of entries){const oiid=byMenu[id];for(const aid of Object.keys(e.addons)){const ad=e.addons[aid];const sp=addonCostSplit(aid,saleMonth);addonRows.push({order_item_id:oiid,store_id,addon_id:aid,name:ad.name,price:ad.price,quantity:e.qty,food_cost_snapshot:r2(sp.food),pkg_cost_snapshot:r2(sp.pkg)});}}
     if(addonRows.length)await post(state.s,"order_item_addons",addonRows,"return=minimal");
+    if(draft.editId)await del(state.s,`order_packaging?order_id=eq.${oid}`);
+    const im=ingMap();const pkgRows=(draft.packaging||[]).filter(p=>Number(p.qty)>0).map(p=>{const it=im[p.item_id],k=(it&&it.kind==="packaging")?"packaging":"supply";return {store_id,order_id:oid,inventory_item_id:p.item_id,kind:k,qty:Number(p.qty),unit_cost_snapshot:r2(ingCostPerUnit(p.item_id,saleMonth))};});
+    if(pkgRows.length)await post(state.s,"order_packaging",pkgRows,"return=minimal");
     await reloadData();
     if(draft.editId){toast("แก้ไขออเดอร์แล้ว");navigate("orders");}else{toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));navigate("dash");}
   }catch(e){toast(e.message||"บันทึกไม่สำเร็จ");btn.disabled=false;lbl.textContent=old;}
