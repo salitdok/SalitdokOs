@@ -223,29 +223,49 @@ const post=(s,p,b,pr)=>send(s,"POST",p,b,pr);
 const patch=(s,p,b)=>send(s,"PATCH",p,b,"return=minimal");
 const del=(s,p)=>send(s,"DELETE",p,null,"return=minimal");
 
-async function loadAll(s){
+// ===================== LOADERS (per-module — Phase 0) =====================
+// แยกจาก loadAll เดิมเพื่อให้แต่ละหน้าโหลดเฉพาะส่วนได้ในอนาคต
+// ขั้นนี้ยังเรียกแบบ sequential ผ่าน loadAll() เพื่อคงพฤติกรรมเดิมทุกอย่าง
+async function loadStore(s){
   const stores=await rest(s,"stores?select=id,name,timezone,settings&limit=1");
   if(!stores.length)throw new Error("ไม่พบร้าน — ล็อกอินด้วย user เจ้าของร้าน");
-  const store=stores[0],since=new Date(Date.now()-35*DAY).toISOString();
-  let orders;
-  const oxA=`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(name,quantity,food_cost_snapshot,pkg_cost_snapshot))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
-  const oxB=`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,cost_snapshot,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
-  const oxC=`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
-  try{orders=await rest(s,oxA);}catch(e){try{orders=await rest(s,oxB);}catch(e2){orders=await rest(s,oxC);}}
-  const customers=await rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${store.id}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
-  const loyaltySince=new Date(Date.now()-95*DAY).toISOString();
-  const loyaltyOrders=await safeRest(s,`orders?select=customer_id,net_total,ordered_at&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${loyaltySince}`);
-  const menu=await rest(s,`menu_items?select=id,name,name_en,product_type,price,cost,category,sort_order,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
-  const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${store.id}&order=sort_order.asc`);
-  const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${store.id}`);
-  let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit&store_id=eq.${store.id}&order=name.asc`);
-  if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${store.id}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
-  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note&store_id=eq.${store.id}&order=purchased_at.desc`);
+  return stores[0];
+}
+async function loadOrders(s,storeId,sinceISO){
+  const since=sinceISO||new Date(Date.now()-35*DAY).toISOString();
+  const q=ext=>`orders?select=id,customer_id,source,net_total,ordered_at,${ext}&store_id=eq.${storeId}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`;
+  const oxA=q(`order_items(menu_item_id,item_name,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(name,quantity,food_cost_snapshot,pkg_cost_snapshot))`);
+  const oxB=q(`order_items(menu_item_id,item_name,quantity,cost_snapshot,order_item_addons(name,quantity))`);
+  const oxC=q(`order_items(menu_item_id,item_name,quantity,order_item_addons(name,quantity))`);
+  try{return await rest(s,oxA);}catch(e){try{return await rest(s,oxB);}catch(e2){return await rest(s,oxC);}}
+}
+async function loadCustomers(s,storeId){
+  return rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${storeId}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
+}
+async function loadLoyalty(s,storeId){
+  const since=new Date(Date.now()-95*DAY).toISOString();
+  return safeRest(s,`orders?select=customer_id,net_total,ordered_at&store_id=eq.${storeId}&status=eq.completed&ordered_at=gte.${since}`);
+}
+async function loadMaster(s,storeId){
+  const menu=await rest(s,`menu_items?select=id,name,name_en,product_type,price,cost,category,sort_order,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
+  const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
+  const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${storeId}`);
+  let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit&store_id=eq.${storeId}&order=name.asc`);
+  if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${storeId}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
+  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note&store_id=eq.${storeId}&order=purchased_at.desc`);
   const purchases=purRaw.map(p=>({...p,item_id:p.inventory_item_id||p.ingredient_id}));
-  const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${store.id}`);
+  const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${storeId}`);
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
-  const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
-  return {store,orders,customers,menu,addons,links,ingredients:inv,inv,purchases,recipes,cats,loyaltyOrders};
+  const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats};
+}
+async function loadAll(s){
+  const store=await loadStore(s);
+  const orders=await loadOrders(s,store.id);
+  const customers=await loadCustomers(s,store.id);
+  const loyaltyOrders=await loadLoyalty(s,store.id);
+  const m=await loadMaster(s,store.id);
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
