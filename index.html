@@ -408,9 +408,71 @@ async function navigate(v){
   if(v==="orders"){app.innerHTML=shell("orders",`<div class="phead"><div class="ptitle">ออเดอร์ล่าสุด</div></div><div class="empty">กำลังโหลด…</div>`);wireNav();try{renderOrders(await fetchRecentOrders(state.s,state.data.store.id));}catch(e){toast(e.message);}return;}
   if(v==="customers"){renderCustomers();return;}
   if(v==="menu"){renderMenu();return;}
+  if(v==="reports"){renderReports();return;}
   renderDash();
 }
 function handleAction(a){if(!a)return;if(a.type==="customer"){const c=state.data.customers.find(x=>x.id===a.cid);c?renderCustomerDetail(c):navigate("customers");}else if(a.type==="menu"){state.menuSeg="items";navigate("menu");}else if(a.type==="orders")navigate("orders");}
+// ===== Reports (Phase 0 ก้าว 3) — อ่านจาก DB views =====
+function reportRange(preset){
+  const today=bkkDate(new Date());
+  if(preset==="today")return {from:today,to:today};
+  if(preset==="7d")return {from:bkkDate(new Date(Date.now()-6*DAY)),to:today};
+  if(preset==="month")return {from:today.slice(0,8)+"01",to:today};
+  return null;
+}
+async function fetchReport(from,to){
+  const sid=state.data.store.id;
+  const sales=await safeRest(state.s,`v_sales_daily?store_id=eq.${sid}&sale_date=gte.${from}&sale_date=lte.${to}&order=sale_date.asc`);
+  const cogs=await safeRest(state.s,`v_cogs_daily?store_id=eq.${sid}&sale_date=gte.${from}&sale_date=lte.${to}&order=sale_date.asc`);
+  return {sales,cogs};
+}
+async function renderReports(preset){
+  state.view="reports";
+  const r=state.reportRange||{preset:"month"};
+  if(preset){r.preset=preset;if(preset!=="custom"){const rr=reportRange(preset);r.from=rr.from;r.to=rr.to;}}
+  if(!r.from){const rr=reportRange("month");r.from=rr.from;r.to=rr.to;}
+  state.reportRange=r;
+  const presets=[["today","วันนี้"],["7d","7 วัน"],["month","เดือนนี้"],["custom","กำหนดเอง"]];
+  const chips=presets.map(([k,l])=>`<button class="chip ${r.preset===k?"active":""}" data-rp="${k}">${l}</button>`).join("");
+  const customBar=r.preset==="custom"?`<div class="block" style="display:flex;gap:8px;align-items:center"><input type="date" id="rFrom" class="nin" style="margin-top:0" value="${esc(r.from)}"><span>ถึง</span><input type="date" id="rTo" class="nin" style="margin-top:0" value="${esc(r.to)}"><button class="chip active" id="rGo">ดู</button></div>`:"";
+  app.innerHTML=shell("reports",`<div class="phead"><div class="ptitle">รายงาน</div><button class="iconbtn" id="toDash">‹</button></div>
+    <div class="block"><div class="chips" id="rpChips">${chips}</div></div>
+    ${customBar}
+    <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ข้อมูลจากระบบบัญชีต้นทุน (snapshot)</div>
+    <div id="repBody"><div class="empty">กำลังโหลด…</div></div>`);
+  wireNav();
+  document.getElementById("toDash").onclick=()=>navigate("dash");
+  document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>renderReports(b.dataset.rp));
+  if(r.preset==="custom"){document.getElementById("rGo").onclick=()=>{const f=val("rFrom"),t=val("rTo");if(f&&t){state.reportRange={preset:"custom",from:f,to:t};renderReports();}};}
+  try{
+    const {sales,cogs}=await fetchReport(r.from,r.to);
+    const totSales=sales.reduce((a,x)=>a+Number(x.sales||0),0),totOrders=sales.reduce((a,x)=>a+Number(x.orders_count||0),0);
+    const food=cogs.reduce((a,x)=>a+Number(x.food_cost||0),0),pkg=cogs.reduce((a,x)=>a+Number(x.packaging_cost||0),0),con=cogs.reduce((a,x)=>a+Number(x.consumable_cost||0),0),cg=cogs.reduce((a,x)=>a+Number(x.cogs||0),0);
+    const gp=totSales-cg,avg=totOrders?totSales/totOrders:0,fcPct=totSales>0?Math.round(food/totSales*100):0,gpPct=totSales>0?Math.round(gp/totSales*100):0;
+    const bySrc={};for(const x of sales){const s=x.source||"manual";bySrc[s]=(bySrc[s]||0)+Number(x.sales||0);}
+    const srcRows=Object.entries(bySrc).sort((a,b)=>b[1]-a[1]);const srcMax=Math.max(1,...srcRows.map(x=>x[1]));
+    const byDay={};for(const x of sales)byDay[x.sale_date]=(byDay[x.sale_date]||0)+Number(x.sales||0);
+    const days=Object.keys(byDay).sort();
+    const cell=(l,v,sub)=>`<div class="anum"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:17px">${v}</div>${sub?`<div class="anumlabel" style="margin-top:2px">${sub}</div>`:""}</div>`;
+    document.getElementById("repBody").innerHTML=`
+      <div class="sec"><div class="grid">
+        ${cell("ยอดขาย",fmtTHB(totSales))}
+        ${cell("ออเดอร์",totOrders+" บิล","เฉลี่ย "+fmtTHB(avg))}
+        ${cell("กำไรขั้นต้น",fmtTHB(gp),gpPct+"% ของยอด")}
+        ${cell("COGS",fmtTHB(cg),fcPct+"% Food Cost")}
+      </div></div>
+      <div class="sec"><div class="sectitle">แยกต้นทุน</div><div class="block"><div class="costsum">
+        <div class="row"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(food)}</b></div>
+        <div class="row" style="margin-top:4px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(pkg)}</b></div>
+        <div class="row" style="margin-top:4px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(con)}</b></div>
+        <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cg)}</b></div>
+        <div class="row" style="margin-top:4px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(gp)}</b></div>
+      </div></div></div>
+      ${srcRows.length?`<div class="sec"><div class="sectitle">ยอดขายตามช่องทาง</div><div class="block">${srcRows.map(([s,v])=>`<div style="margin-bottom:10px"><div class="row"><span>${SRC_MAP[s]||s}</span><b class="tnum">${fmtTHB(v)}</b></div><div style="height:7px;border-radius:99px;background:#eee;margin-top:4px;overflow:hidden"><div style="height:100%;width:${Math.round(v/srcMax*100)}%;background:${SRC_COLOR[s]||"#888"}"></div></div></div>`).join("")}</div></div>`:""}
+      ${days.length?`<div class="sec"><div class="sectitle">รายวัน</div><div class="block">${days.map(d=>`<div class="row" style="margin-bottom:6px"><span class="cmeta">${d}</span><b class="tnum">${fmtTHB(byDay[d])}</b></div>`).join("")}</div></div>`:`<div class="empty">ยังไม่มียอดขายในช่วงนี้</div>`}
+      <div style="height:20px"></div>`;
+  }catch(e){document.getElementById("repBody").innerHTML=`<div class="empty">โหลดรายงานไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
 
 function renderDash(){
   const f=computeFacts(state.data),d=state.data,L=loyaltySummary();state.aiActions=f.insights;
@@ -487,7 +549,7 @@ function renderDash(){
   document.getElementById("qaOrder").onclick=()=>{state.prev="dash";openAdd();};
   document.getElementById("qaCust").onclick=renderAddCustomer;
   document.getElementById("qaMenu").onclick=()=>{state.menuSeg="items";renderMenuEdit(null);};
-  document.getElementById("qaReport").onclick=()=>document.getElementById("analysis").scrollIntoView({behavior:"smooth"});
+  document.getElementById("qaReport").onclick=()=>navigate("reports");
 }
 function kpi(label,v,sub){return `<div class="kpi"><div class="kpilabel">${label}</div><div class="kpival tnum">${esc(String(v))}</div>${sub?`<div class="kpisub">${sub}</div>`:""}</div>`;}
 function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span class="dot" style="background:${d}"></span>${l}</div><div class="statval">${esc(v)}</div><div class="statsub">${esc(s)}</div></div>`;}
