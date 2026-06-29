@@ -230,7 +230,7 @@ async function loadAll(s){
   let orders;
   try{orders=await rest(s,`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,cost_snapshot,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);}
   catch(e){orders=await rest(s,`orders?select=id,customer_id,source,net_total,ordered_at,order_items(menu_item_id,item_name,quantity,order_item_addons(name,quantity))&store_id=eq.${store.id}&status=eq.completed&ordered_at=gte.${since}&order=ordered_at.desc`);}
-  const customers=await rest(s,`customers?select=id,name,phone,is_guest,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${store.id}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
+  const customers=await rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${store.id}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
   const menu=await rest(s,`menu_items?select=id,name,name_en,product_type,price,cost,category,sort_order,is_active&store_id=eq.${store.id}&order=sort_order.asc`);
   const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${store.id}&order=sort_order.asc`);
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${store.id}`);
@@ -254,6 +254,13 @@ function catColor(name){const c=allCats().find(x=>x.name===name);return c&&c.col
 function catOptions(selected){const names=categories();const set=new Set(names);const extra=selected&&!set.has(selected)?[selected]:[];return `<option value="">— ไม่ระบุหมวด —</option>`+[...names,...extra].map(n=>`<option value="${esc(n)}"${n===selected?" selected":""}>${esc(n)}</option>`).join("");}
 function addonsForMenu(m){const ids=new Set();for(const l of state.data.links){if(l.menu_item_id===m.id||(l.category&&l.category===m.category))ids.add(l.addon_id);}return state.data.addons.filter(a=>a.is_active!==false&&ids.has(a.id));}
 const realCustomers=()=>state.data.customers.filter(c=>!c.is_guest);
+const CTYPES=[["new","ลูกค้าใหม่","#0E9F6E"],["imported","ลูกค้าเก่าย้อนหลัง","#2563EB"],["regular","ลูกค้าประจำ","#6B7280"],["vip","VIP","#F59E0B"]];
+const ctypeOf=t=>CTYPES.find(x=>x[0]===t)||CTYPES[0];
+function ctypeBadge(t){const[,label,col]=ctypeOf(t);return `<span class="badge" style="background:${col}22;color:${col}">${label}</span>`;}
+function ctypeChips(id,sel){return `<div class="fhint" style="margin-top:12px">ประเภทลูกค้า</div><div class="chips" id="${id}" style="margin-top:6px">${CTYPES.map(([k,l])=>`<button type="button" class="chip sm ${k===(sel||'new')?'active':''}" data-ct="${k}">${l}</button>`).join("")}</div>`;}
+function wireCtypeChips(id){document.querySelectorAll(`#${id} .chip`).forEach(c=>c.onclick=()=>document.querySelectorAll(`#${id} .chip`).forEach(x=>x.classList.toggle("active",x===c)));}
+function selectedCtype(id){const a=document.querySelector(`#${id} .chip.active`);return a?a.dataset.ct:"new";}
+const fmtBirth=b=>b?new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"long"}).format(new Date(b+"T00:00:00")):null;
 
 function ingCostPerUnit(ingId,mkey){
   const ps=state.data.purchases.filter(p=>p.ingredient_id===ingId);
@@ -456,10 +463,14 @@ async function clearData(){
 }
 function renderAddCustomer(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">เพิ่มลูกค้า</div></div>
-    <div class="block"><input id="acName" class="nin" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="acPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี)" inputmode="tel"/></div>
+    <div class="block"><input id="acName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="acPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี)" inputmode="tel"/>
+      <div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="acBirth" class="nin" style="margin-top:6px"/>
+      <input id="acNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)"/>
+      ${ctypeChips("acType","new")}</div>
     <div style="height:80px"></div><div class="savebar"><button class="savebtn" id="save">บันทึกลูกค้า</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("dash");
-  document.getElementById("save").onclick=async()=>{const name=val("acName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("acPhone").trim();const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";try{await post(state.s,"customers",{store_id:state.data.store.id,name,phone:phone||null},"return=minimal");await reloadData();toast("เพิ่มลูกค้าแล้ว");navigate("customers");}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกลูกค้า";}};
+  wireCtypeChips("acType");
+  document.getElementById("save").onclick=async()=>{const name=val("acName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("acPhone").trim(),birthdate=val("acBirth")||null,note=val("acNote").trim()||null,customer_type=selectedCtype("acType");const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";try{await post(state.s,"customers",{store_id:state.data.store.id,name,phone:phone||null,birthdate,note,customer_type},"return=minimal");await reloadData();toast("เพิ่มลูกค้าแล้ว");navigate("customers");}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกลูกค้า";}};
 }
 function srcBadge(src){const c=SRC_COLOR[src]||"#6B7280";return `<span class="badge" style="background:${c}22;color:${c}">${SRC_MAP[src]||src}</span>`;}
 function renderOrders(list){
@@ -485,7 +496,7 @@ async function renderOrderDetail(id){
 
 function renderCustomers(filter=""){
   const mm=menuMap(),all=realCustomers();
-  const rowsHTML=l=>l.length?l.map(c=>{const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;return `<button class="crow" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
+  const rowsHTML=l=>l.length?l.map(c=>{const fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;return `<button class="crow" data-cid="${c.id}"><div class="cname">${esc(c.name)} ${ctypeBadge(c.customer_type)}</div><div class="cmeta">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></button>`;}).join(""):`<div class="empty">ไม่พบลูกค้า</div>`;
   const f=filter.trim().toLowerCase();
   app.innerHTML=shell("customers",`<div class="phead"><div class="ptitle">ลูกค้า</div></div><div class="search"><input id="csearch" class="searchin" placeholder="ค้นหาชื่อลูกค้า…" autocapitalize="none" value="${esc(filter)}"/></div><div id="clist">${rowsHTML(f?all.filter(c=>(c.name||"").toLowerCase().includes(f)):all)}</div>`);wireNav();
   const si=document.getElementById("csearch");si.oninput=()=>{const q=si.value.trim().toLowerCase();document.getElementById("clist").innerHTML=rowsHTML(q?all.filter(c=>(c.name||"").toLowerCase().includes(q)):all);wireCustomerRows();};
@@ -493,9 +504,9 @@ function renderCustomers(filter=""){
 }
 function wireCustomerRows(){document.querySelectorAll(".crow").forEach(b=>b.onclick=()=>renderCustomerDetail(state.data.customers.find(c=>c.id===b.dataset.cid)));}
 function renderCustomerDetail(c){
-  const mm=menuMap(),fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null;
+  const mm=menuMap(),fav=c.favorite_item_id&&mm[c.favorite_item_id]?mm[c.favorite_item_id].name:null,bd=fmtBirth(c.birthdate);
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ลูกค้า</div></div>
-    <div class="block"><div class="selbox"><div class="mmname">${esc(c.name)}</div><div class="cmeta" style="margin-top:4px">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></div></div>
+    <div class="block"><div class="selbox"><div class="row"><div class="mmname">${esc(c.name)}</div>${ctypeBadge(c.customer_type)}</div><div class="cmeta" style="margin-top:6px">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div>${bd?`<div class="cmeta" style="margin-top:4px">🎂 วันเกิด ${esc(bd)}</div>`:""}${c.note?`<div class="cmeta" style="margin-top:4px">📝 ${esc(c.note)}</div>`:""}</div></div>
     <div class="block" id="cact"><button class="savebtn" id="addOrder" style="height:50px">＋ เพิ่มออเดอร์ให้ลูกค้านี้</button><button class="ghostbtn" id="editc">แก้ไขข้อมูลลูกค้า</button><button class="ghostbtn" id="hide">ซ่อนลูกค้า (เก็บประวัติยอดขายไว้)</button><button class="delbtn" id="delc">ลบลูกค้า</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("customers");
   document.getElementById("addOrder").onclick=()=>{state.prev="customers";openAdd(c.id);};
@@ -507,10 +518,14 @@ function renderCustomerDetail(c){
 }
 function renderCustomerEdit(c){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">แก้ไขลูกค้า</div></div>
-    <div class="block"><input id="ceName" class="nin" value="${esc(c.name)}" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="cePhone" class="nin" value="${esc(c.phone||"")}" placeholder="เบอร์โทร" inputmode="tel"/></div>
+    <div class="block"><input id="ceName" class="nin" style="margin-top:0" value="${esc(c.name)}" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="cePhone" class="nin" value="${esc(c.phone||"")}" placeholder="เบอร์โทร" inputmode="tel"/>
+      <div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="ceBirth" class="nin" style="margin-top:6px" value="${esc(c.birthdate||"")}"/>
+      <input id="ceNote" class="nin" value="${esc(c.note||"")}" placeholder="หมายเหตุ (ถ้ามี)"/>
+      ${ctypeChips("ceType",c.customer_type)}</div>
     <div style="height:80px"></div><div class="savebar"><button class="savebtn" id="save">บันทึก</button></div></div>`;
   document.getElementById("back").onclick=()=>renderCustomerDetail(c);
-  document.getElementById("save").onclick=async()=>{const name=val("ceName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("cePhone").trim();try{await patch(state.s,`customers?id=eq.${c.id}`,{name,phone:phone||null});await reloadData();toast("บันทึกแล้ว");const nc=state.data.customers.find(x=>x.id===c.id)||{...c,name,phone};renderCustomerDetail(nc);}catch(e){toast(e.message);}};
+  wireCtypeChips("ceType");
+  document.getElementById("save").onclick=async()=>{const name=val("ceName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("cePhone").trim(),birthdate=val("ceBirth")||null,note=val("ceNote").trim()||null,customer_type=selectedCtype("ceType");try{await patch(state.s,`customers?id=eq.${c.id}`,{name,phone:phone||null,birthdate,note,customer_type});await reloadData();toast("บันทึกแล้ว");const nc=state.data.customers.find(x=>x.id===c.id)||{...c,name,phone,birthdate,note,customer_type};renderCustomerDetail(nc);}catch(e){toast(e.message);}};
 }
 function renderMenu(){
   const seg=state.menuSeg;
@@ -792,7 +807,7 @@ function renderPurchase(ing,existing){
     document.getElementById("delYes").onclick=async()=>{try{await withReason(val("rsnPur"),()=>del(state.s,`ingredient_purchases?id=eq.${existing.id}`));await reloadData();toast("ลบรายการซื้อแล้ว");renderIngredientEdit(state.data.ingredients.find(i=>i.id===ing.id));}catch(e){toast(e.message);}};
   };
 }
-function openAdd(preCustId){draft={editId:null,customer:{mode:"new"},cart:{},source:"manual",orderedAt:toLocalInput(new Date())};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
+function openAdd(preCustId){draft={editId:null,customer:{mode:"search"},cart:{},source:"manual",orderedAt:toLocalInput(new Date())};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
 function openEditOrder(o){
   state.prev="orders";const mm=menuMap(),am=addonMap();
   draft={editId:o.id,source:o.source||"manual",cart:{},orderedAt:toLocalInput(new Date(o.ordered_at)),customer:{mode:"new"}};
@@ -805,7 +820,7 @@ function renderAdd(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="closeAdd">✕</button><div class="ptitle">${isEdit?"แก้ไขออเดอร์":"เพิ่มออเดอร์"}</div></div>
     <div class="blocktitle">ลูกค้า</div>
     <div class="block">
-      <div class="seg" style="margin:0 0 12px"><button class="segbtn" id="modeExisting" data-cm="existing">ลูกค้าเก่า</button><button class="segbtn" id="modeNew" data-cm="new">ลูกค้าใหม่</button></div>
+      <div class="seg" style="margin:0 0 12px"><button class="segbtn" data-cm="search">ค้นหา</button><button class="segbtn" data-cm="new">ลูกค้าใหม่</button><button class="segbtn" data-cm="imported">เก่าของร้าน</button></div>
       <div id="custArea"></div>
     </div>
     <div class="blocktitle">เมนู</div>
@@ -819,31 +834,38 @@ function renderAdd(){
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
   document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
   document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));});
-  document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{if(draft.customer.mode!==b.dataset.cm){draft.customer={mode:b.dataset.cm};renderCustArea();}});
+  document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{const m=b.dataset.cm,curSeg=draft.customer.mode==="existing"?"search":draft.customer.mode;if(m===curSeg)return;if(m==="search")draft.customer={mode:"search"};else{const d=draft.customer;draft.customer={mode:m,name:d.name,phone:d.phone,birthdate:d.birthdate,note:d.note};}renderCustArea();});
   renderCustArea();syncMenu();
 }
+function custFormHTML(){const d=draft.customer;return `<input id="cfName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า (จำเป็น)" value="${esc(d.name||"")}" autocapitalize="words"/><input id="cfPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี — ไว้ค้นเจอ/ทำโปรวันเกิด)" inputmode="tel" value="${esc(d.phone||"")}"/><div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="cfBirth" class="nin" style="margin-top:6px" value="${esc(d.birthdate||"")}"/><input id="cfNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)" value="${esc(d.note||"")}"/>`;}
+function wireCustForm(){const map={cfName:"name",cfPhone:"phone",cfBirth:"birthdate",cfNote:"note"};Object.entries(map).forEach(([id,k])=>{const el=document.getElementById(id);if(el)el.oninput=()=>{draft.customer[k]=el.value;};});}
 function renderCustArea(){
   const area=document.getElementById("custArea"),cu=draft.customer;
-  document.querySelectorAll("[data-cm]").forEach(b=>b.classList.toggle("on",b.dataset.cm===(cu.mode==="existing"?"existing":"new")));
+  const segActive=cu.mode==="existing"?"search":cu.mode;
+  document.querySelectorAll("[data-cm]").forEach(b=>b.classList.toggle("on",b.dataset.cm===segActive));
   if(cu.mode==="existing"&&cu.id){
     const c=cu.c,fav=c.favorite_item_id&&menuMap()[c.favorite_item_id]?menuMap()[c.favorite_item_id].name:null;
-    area.innerHTML=`<div class="selbox"><div class="selrow"><div><b>${esc(c.name)}</b><div class="cmeta">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></div><button class="link" id="changeCust">เปลี่ยน</button></div>${(c.total_orders||0)>0?`<button class="repeatbtn" id="repeatBtn">⟳ สั่งเหมือนเดิม (เมนูล่าสุด)</button>`:""}</div>`;
-    document.getElementById("changeCust").onclick=()=>{draft.customer={mode:"existing"};renderCustArea();};
+    area.innerHTML=`<div class="selbox"><div class="selrow"><div><b>${esc(c.name)}</b> ${ctypeBadge(c.customer_type)}<div class="cmeta" style="margin-top:3px">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · รวม ${fmtTHB(c.total_spent)} · ล่าสุด ${lastSeen(c.last_order_at)}${fav?` · ชอบ ${esc(fav)}`:""}</div></div><button class="link" id="changeCust">เปลี่ยน</button></div>${(c.total_orders||0)>0?`<button class="repeatbtn" id="repeatBtn">⟳ สั่งเหมือนเดิม (เมนูล่าสุด)</button>`:""}</div>`;
+    document.getElementById("changeCust").onclick=()=>{draft.customer={mode:"search"};renderCustArea();};
     const rb=document.getElementById("repeatBtn");if(rb)rb.onclick=loadRepeat;
     return;
   }
-  if(cu.mode==="existing"){
-    area.innerHTML=`<input id="custSearch" class="searchin" placeholder="ค้นหาชื่อ/เบอร์ลูกค้าเก่า…" autocapitalize="none"/><div id="custResults" class="miniresults" style="margin-top:8px"></div>`;
+  if(cu.mode==="search"||cu.mode==="existing"){
+    area.innerHTML=`<input id="custSearch" class="searchin" placeholder="ค้นหาชื่อ/เบอร์ลูกค้าในระบบ…" autocapitalize="none"/><div id="custResults" class="miniresults" style="margin-top:8px"></div>`;
     const cs=document.getElementById("custSearch");
-    cs.oninput=()=>{const q=cs.value.trim().toLowerCase(),res=document.getElementById("custResults");if(!q){res.innerHTML="";return;}res.innerHTML=realCustomers().filter(c=>(c.name||"").toLowerCase().includes(q)||(c.phone||"").includes(q)).slice(0,8).map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)}</div><div class="cmeta">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("")||`<div class="cmeta" style="padding:4px 2px">ไม่พบลูกค้าชื่อ/เบอร์นี้ — ลองสลับไป “ลูกค้าใหม่”</div>`;res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));};
+    cs.oninput=()=>{const raw=cs.value.trim(),q=raw.toLowerCase(),res=document.getElementById("custResults");if(!q){res.innerHTML="";return;}
+      const hits=realCustomers().filter(c=>(c.name||"").toLowerCase().includes(q)||(c.phone||"").includes(q)).slice(0,8);
+      if(hits.length){res.innerHTML=hits.map(c=>`<button class="mres" data-cid="${c.id}"><div class="cname">${esc(c.name)} ${ctypeBadge(c.customer_type)}</div><div class="cmeta">${c.phone?esc(c.phone)+" · ":""}ซื้อ ${c.total_orders||0} ครั้ง · ล่าสุด ${lastSeen(c.last_order_at)}</div></button>`).join("");res.querySelectorAll(".mres").forEach(b=>b.onclick=()=>selectExisting(b.dataset.cid));}
+      else{res.innerHTML=`<div class="cmeta" style="padding:2px 2px 8px">ไม่พบ "${esc(raw)}" ในระบบ — เพิ่มเป็น:</div><div style="display:flex;gap:8px"><button class="quick" id="addAsNew" style="flex:1">✨ ลูกค้าใหม่</button><button class="quick" id="addAsImp" style="flex:1">📋 เก่าของร้าน</button></div>`;
+        document.getElementById("addAsNew").onclick=()=>{draft.customer={mode:"new",name:raw};renderCustArea();};
+        document.getElementById("addAsImp").onclick=()=>{draft.customer={mode:"imported",name:raw};renderCustArea();};}
+    };
     cs.focus();return;
   }
-  area.innerHTML=`<input id="newName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า (จำเป็น)" value="${esc(draft.customer.name||"")}" autocapitalize="words"/><input id="newPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี — ไว้ค้นเจอวันหลัง)" inputmode="tel" value="${esc(draft.customer.phone||"")}"/>
-    <div class="cmeta" style="margin-top:8px">ไม่รู้ชื่อจริง พิมพ์ชื่อชั่วคราวได้ แตะเพื่อเติม:</div>
-    <div class="chips" style="margin-top:6px">${["ลูกค้า LINE MAN","ลูกค้า Grab","ลูกค้า Shopee","ลูกค้าหน้าร้าน"].map(s=>`<button type="button" class="chip sm" data-tmpname="${esc(s)}">${esc(s)}</button>`).join("")}</div>`;
-  const nn=document.getElementById("newName");nn.oninput=()=>{draft.customer.name=nn.value;};
-  const np=document.getElementById("newPhone");np.oninput=()=>{draft.customer.phone=np.value;};
-  area.querySelectorAll("[data-tmpname]").forEach(b=>b.onclick=()=>{const t=new Intl.DateTimeFormat("th-TH",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date());nn.value=b.dataset.tmpname+" "+t;draft.customer.name=nn.value;nn.focus();});
+  const isImp=cu.mode==="imported";
+  area.innerHTML=`<div class="cmeta" style="margin-bottom:8px">${isImp?"📋 ลูกค้าเก่าของร้าน (เคยซื้อมาก่อน) — บันทึกเป็น “ลูกค้าเก่าย้อนหลัง”":"✨ ลูกค้าใหม่ — เพิ่งมาครั้งแรก"}</div>${custFormHTML()}${!isImp?`<div class="cmeta" style="margin-top:8px">ไม่รู้ชื่อจริง พิมพ์ชื่อชั่วคราวได้ แตะเพื่อเติม:</div><div class="chips" style="margin-top:6px">${["ลูกค้า LINE MAN","ลูกค้า Grab","ลูกค้า Shopee","ลูกค้าหน้าร้าน"].map(s=>`<button type="button" class="chip sm" data-tmpname="${esc(s)}">${esc(s)}</button>`).join("")}</div>`:""}`;
+  wireCustForm();
+  area.querySelectorAll("[data-tmpname]").forEach(b=>b.onclick=()=>{const t=new Intl.DateTimeFormat("th-TH",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date());const nn=document.getElementById("cfName");nn.value=b.dataset.tmpname+" "+t;draft.customer.name=nn.value;nn.focus();});
 }
 function selectExisting(cid){const c=state.data.customers.find(x=>x.id===cid);draft.customer={mode:"existing",id:c.id,name:c.name,c};renderCustArea();}
 async function loadRepeat(){
@@ -874,15 +896,20 @@ async function saveOrder(){
   try{
     const store_id=state.data.store.id,orderedAt=fromLocalInput(val("orderedAt")),saleMonth=monthOf(new Date(orderedAt));let customer_id=null;
     if(draft.customer.mode==="existing"){
-      if(!draft.customer.id){toast("เลือกลูกค้าเก่าก่อน หรือสลับไปลูกค้าใหม่");btn.disabled=false;lbl.textContent=old;return;}
+      if(!draft.customer.id){toast("ค้นหาแล้วเลือกลูกค้า หรือเพิ่มลูกค้าใหม่ก่อน");btn.disabled=false;lbl.textContent=old;return;}
       customer_id=draft.customer.id;
-    }else{
-      const name=(val("newName")||draft.customer.name||"").trim();
+    }else if(draft.customer.mode==="new"||draft.customer.mode==="imported"){
+      const name=(val("cfName")||draft.customer.name||"").trim();
       if(!name){toast("ใส่ชื่อลูกค้าก่อนบันทึก");btn.disabled=false;lbl.textContent=old;return;}
-      const phone=(val("newPhone")||draft.customer.phone||"").trim();
-      let c;try{c=await post(state.s,"customers",{store_id,name,phone:phone||null},"return=representation");}catch(e){toast("บันทึกลูกค้าไม่สำเร็จ: "+e.message);btn.disabled=false;lbl.textContent=old;return;}
+      const phone=(val("cfPhone")||draft.customer.phone||"").trim();
+      const birthdate=(val("cfBirth")||draft.customer.birthdate||"")||null;
+      const note=(val("cfNote")||draft.customer.note||"").trim()||null;
+      const customer_type=draft.customer.mode==="imported"?"imported":"new";
+      let c;try{c=await post(state.s,"customers",{store_id,name,phone:phone||null,birthdate,note,customer_type},"return=representation");}catch(e){toast("บันทึกลูกค้าไม่สำเร็จ: "+e.message);btn.disabled=false;lbl.textContent=old;return;}
       customer_id=c&&c[0]&&c[0].id;
       if(!customer_id){toast("สร้างลูกค้าไม่สำเร็จ — ยังไม่บันทึกออเดอร์");btn.disabled=false;lbl.textContent=old;return;}
+    }else{
+      toast("ค้นหาแล้วเลือกลูกค้า หรือเพิ่มลูกค้าใหม่ก่อนบันทึก");btn.disabled=false;lbl.textContent=old;return;
     }
     const subtotal=entries.reduce((a,[id,e])=>a+(e.price+Object.values(e.addons).reduce((x,ad)=>x+ad.price,0))*e.qty,0);
     let oid;
