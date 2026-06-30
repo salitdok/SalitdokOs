@@ -1145,7 +1145,7 @@ function renderAdd(){
     <div class="blocktitle">สรุปต้นทุน</div>
     <div class="block"><div id="orderCost" class="costsum"></div></div>
     <div style="height:90px"></div>
-    <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button></div></div>`;
+    <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button>${isEdit?"":`<button class="ghostbtn" id="saveNextBtn" style="margin-top:10px" disabled>＋ บันทึก & เพิ่มออเดอร์ถัดไป</button>`}</div></div>`;
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
   document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
   document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));mergePackagingDefaults();renderPackaging();});
@@ -1252,15 +1252,16 @@ function syncMenu(){
       adbox.querySelectorAll(".achip").forEach(ch=>ch.onclick=()=>{const ee=draft.cart[ch.dataset.mid];if(!ee)return;const a=addonMap()[ch.dataset.aid];if(ee.addons[ch.dataset.aid])delete ee.addons[ch.dataset.aid];else ee.addons[ch.dataset.aid]={name:a.name,price:Number(a.price)};syncMenu();});}
     if(q>0){const adSum=Object.values(e.addons).reduce((x,a)=>x+a.price,0);total+=(e.price+adSum)*q;count+=q;}
   }
-  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel");
+  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel"),nbtn=document.getElementById("saveNextBtn");
   if(count>0){btn.disabled=false;lbl.textContent=`${draft.editId?"บันทึกการแก้ไข":"บันทึกออเดอร์"} · ${count} รายการ · ${fmtTHB(total)}`;}else{btn.disabled=true;lbl.textContent="เลือกเมนูก่อน";}
-  btn.onclick=saveOrder;
+  btn.onclick=()=>saveOrder(false);
+  if(nbtn){nbtn.disabled=count<=0;nbtn.onclick=()=>saveOrder(true);}
   mergePackagingDefaults();renderPackaging();
 }
-async function saveOrder(){
+async function saveOrder(andNext){
   const entries=Object.entries(draft.cart).filter(([id,e])=>e.qty>0);
   if(!entries.length){toast("ยังไม่ได้เลือกเมนู");return;}
-  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel"),old=lbl.textContent;btn.disabled=true;lbl.textContent="กำลังบันทึก…";
+  const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel"),nbtn=document.getElementById("saveNextBtn"),old=lbl?lbl.textContent:"";
   try{
     const store_id=state.data.store.id,orderedAt=fromLocalInput(val("orderedAt")),saleMonth=monthOf(new Date(orderedAt));let customer_id=null;
     if(draft.customer.mode==="existing"){
@@ -1280,6 +1281,7 @@ async function saveOrder(){
     }else{
       toast("ค้นหาแล้วเลือกลูกค้า หรือเพิ่มลูกค้าใหม่ก่อนบันทึก");btn.disabled=false;lbl.textContent=old;return;
     }
+    if(btn)btn.disabled=true;if(nbtn)nbtn.disabled=true;if(lbl)lbl.textContent="กำลังบันทึก…";
     const subtotal=entries.reduce((a,[id,e])=>a+(e.price+Object.values(e.addons).reduce((x,ad)=>x+ad.price,0))*e.qty,0);
     let oid;
     if(draft.editId){oid=draft.editId;await patch(state.s,`orders?id=eq.${oid}`,{customer_id,source:draft.source,ordered_at:orderedAt,subtotal,net_total:subtotal});await del(state.s,`order_items?order_id=eq.${oid}`);}
@@ -1293,8 +1295,11 @@ async function saveOrder(){
     const im=ingMap();const pkgRows=(draft.packaging||[]).filter(p=>Number(p.qty)>0).map(p=>{const it=im[p.item_id],k=(it&&it.kind==="packaging")?"packaging":"supply";return {store_id,order_id:oid,inventory_item_id:p.item_id,kind:k,qty:Number(p.qty),unit_cost_snapshot:r2(ingCostPerUnit(p.item_id,saleMonth))};});
     if(pkgRows.length)await post(state.s,"order_packaging",pkgRows,"return=minimal");
     await reloadData();
-    if(draft.editId){toast("แก้ไขออเดอร์แล้ว");navigate("orders");}else{toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));navigate("dash");}
-  }catch(e){toast(e.message||"บันทึกไม่สำเร็จ");btn.disabled=false;lbl.textContent=old;}
+    if(draft.editId){toast("แก้ไขออเดอร์แล้ว");navigate("orders");return;}
+    toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));
+    if(andNext){const keepSource=draft.source,keepOrderedAt=draft.orderedAt;draft={editId:null,customer:{mode:"search"},cart:{},source:keepSource,orderedAt:keepOrderedAt};renderAdd();}
+    else navigate("dash");
+  }catch(e){toast(e.message||"บันทึกไม่สำเร็จ");if(lbl)lbl.textContent=old;syncMenu();}
 }
 
 function doLogout(msg){localStorage.removeItem(LS);const s=state.s||{};state.s=null;state.data=null;renderLogin({url:s.url,key:s.key,email:s.email},msg||"");}
