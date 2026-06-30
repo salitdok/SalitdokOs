@@ -581,7 +581,7 @@ async function fillWasteReport(r){
         <div class="anum"><div class="anumlabel">จำนวนครั้ง</div><div class="anumval tnum" style="font-size:17px">${rows.length}</div></div>
       </div></div>
       ${days.length?days.map(d=>`<div class="sec"><div class="sectitle">${d} · รวม ${fmtTHB(byDay[d].total)}</div><div class="block">${byDay[d].items.map(x=>`<div style="margin-bottom:9px"><div class="row"><span>${esc(x.name)} <span class="cmeta">×${fmt2(x.qty)} ${esc(x.unit)}</span></span><b class="tnum" style="color:#c0392b">${fmtTHB(x.v)}</b></div><div class="cmeta">฿${fmt2(x.cpu)}/${esc(x.unit)}${x.note?` · ${esc(x.note)}`:""}</div></div>`).join("")}</div></div>`).join(""):`<div class="empty">ไม่มีของเสียในช่วงนี้ 🎉</div>`}
-      <div class="cmeta" style="margin-top:8px">มูลค่าคิดจาก unit_cost ที่บันทึก ถ้าไม่มีใช้ต้นทุนเฉลี่ย (avg cost)</div><div style="height:20px"></div>`;
+      <div class="cmeta" style="margin-top:8px">มูลค่าคิดจากต้นทุน ณ วันที่ทิ้ง (snapshot) — รายการเก่าก่อนมี snapshot ใช้ต้นทุนเฉลี่ยแทน</div><div style="height:20px"></div>`;
   }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 function fillCRMReport(r){
@@ -1204,7 +1204,8 @@ function renderIngredientEdit(ing){
     ${ing?(()=>{const st=stockMap()[ing.id],oh=st?Number(st.on_hand):0,neg=oh<0,low=st&&st.low_stock;return `<div class="blocktitle">สต็อกปัจจุบัน</div>
     <div class="block"><div class="row"><span>คงเหลือ</span><b class="tnum" style="color:${neg?"#c0392b":low?"#d9822b":"inherit"}">${fmt2(oh)} ${esc(ing.base_unit)}${st?` · มูลค่า ฿${fmt2(st.stock_value)}`:""}</b></div>
       <button class="ghostbtn" id="btnCount" style="margin-top:10px">📊 นับสต็อก / ปรับยอดให้ตรงจริง</button>
-      <button class="ghostbtn" id="btnWaste" style="margin-top:8px">🗑️ บันทึกของเสีย / ทิ้ง</button></div>`;})():""}
+      <button class="ghostbtn" id="btnWaste" style="margin-top:8px">🗑️ บันทึกของเสีย / ทิ้ง</button>
+      <button class="ghostbtn" id="btnHist" style="margin-top:8px">📜 ประวัติการเคลื่อนไหวสต็อก</button></div>`;})():""}
     ${ing?`<div class="block"><div class="costsum">ต้นทุนเฉลี่ยเดือนนี้ ≈ <b>${avg>0?"฿"+fmt2(avg)+"/"+esc(ing.base_unit):"ยังไม่มีข้อมูลซื้อ"}</b></div></div>
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
@@ -1220,24 +1221,42 @@ function renderIngredientEdit(ing){
   if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id))});}
   if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));
     const bc=document.getElementById("btnCount");if(bc)bc.onclick=()=>adjustStockSheet(ing,"count");
-    const bw=document.getElementById("btnWaste");if(bw)bw.onclick=()=>adjustStockSheet(ing,"waste");}
+    const bw=document.getElementById("btnWaste");if(bw)bw.onclick=()=>adjustStockSheet(ing,"waste");
+    const bh=document.getElementById("btnHist");if(bh)bh.onclick=()=>openStockHistory(ing);}
+}
+const SM_KIND={purchase:["ซื้อเข้า","#0E9F6E"],sale:["ขายออก","#c0392b"],waste:["ของเสีย","#c0392b"],adjust:["ปรับสต็อก","#2563EB"]};
+const SM_REF={purchase:"Purchase",order_item:"Order",order_item_addon:"Order (add-on)",order_packaging:"Order (บรรจุภัณฑ์)",manual:"ปรับมือ"};
+async function openStockHistory(ing){
+  openSheet("ประวัติการเคลื่อนไหว · "+ing.name,`<div class="empty">กำลังโหลด…</div>`);
+  try{
+    const rows=await safeRest(state.s,`stock_movements?select=qty_delta,kind,ref_type,occurred_at,note,unit_cost&inventory_item_id=eq.${ing.id}&order=occurred_at.asc,created_at.asc&limit=500`);
+    let bal=0;const withBal=rows.map(m=>{bal+=Number(m.qty_delta)||0;return {...m,bal};}).reverse();
+    const el=document.getElementById("sheetBody");if(!el)return;
+    if(!withBal.length){el.innerHTML=`<div class="empty">ยังไม่มีการเคลื่อนไหว</div>`;return;}
+    el.innerHTML=`<div class="block" style="margin-bottom:8px"><div class="row"><span class="cmeta">คงเหลือล่าสุด</span><b class="tnum">${fmt2(bal)} ${esc(ing.base_unit)}</b></div></div>
+      <div class="block">${withBal.map(m=>{const k=SM_KIND[m.kind]||[m.kind,"#666"],d=Number(m.qty_delta)||0,sign=d>0?"+":"";return `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><span><span class="badge" style="background:${k[1]}22;color:${k[1]};font-size:10px">${k[0]}</span> <span class="cmeta">${bkkDate(new Date(m.occurred_at))}</span></span><b class="tnum" style="color:${d<0?"#c0392b":"#0E9F6E"}">${sign}${fmt2(d)}</b></div><div class="cmeta" style="margin-top:3px">คงเหลือ ${fmt2(m.bal)} ${esc(ing.base_unit)} · ${SM_REF[m.ref_type]||m.ref_type||"-"}${m.note?` · ${esc(m.note)}`:""}${(m.kind==="waste"&&m.unit_cost)?` · มูลค่า ฿${fmt2(Math.abs(d)*Number(m.unit_cost))}`:""}</div></div>`;}).join("")}</div><div style="height:10px"></div>`;
+  }catch(e){const el=document.getElementById("sheetBody");if(el)el.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 function adjustStockSheet(ing,mode){
   const st=stockMap()[ing.id],cur=st?Number(st.on_hand):0,isWaste=mode==="waste";
+  const avg=st?Number(st.avg_cost)||0:0,unitCostNow=avg>0?avg:ingCostPerUnit(ing.id,monthOf(new Date()))||0;
   openSheet(isWaste?"บันทึกของเสีย":"นับสต็อก / ปรับยอด",`
-    <div class="block"><div class="row"><span>คงเหลือปัจจุบัน</span><b class="tnum">${fmt2(cur)} ${esc(ing.base_unit)}</b></div></div>
+    <div class="block"><div class="row"><span>คงเหลือปัจจุบัน</span><b class="tnum">${fmt2(cur)} ${esc(ing.base_unit)}</b></div>${isWaste?`<div class="row" style="margin-top:4px"><span class="cmeta">ต้นทุนเฉลี่ยตอนนี้</span><b class="tnum">฿${fmt2(unitCostNow)}/${esc(ing.base_unit)}</b></div>`:""}</div>
     <div class="fhint" style="margin-top:10px">${isWaste?`จำนวนที่เสีย/ทิ้ง (${esc(ing.base_unit)})`:`ยอดที่นับได้จริง (${esc(ing.base_unit)})`}</div>
     <input id="adjQty" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="${isWaste?"เช่น 5":fmt2(cur)}"/>
-    <input id="adjNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)"/>
-    <div class="cmeta" style="margin-top:8px">${isWaste?"บันทึกเป็นการตัดสต็อกออก (ของเสีย)":"ระบบจะปรับยอดให้เท่ากับที่นับได้ โดยบันทึกส่วนต่างเป็นการปรับสต็อก — ใช้ตั้งยอดตั้งต้น/แก้ติดลบได้"}</div>
+    <input id="adjNote" class="nin" placeholder="หมายเหตุ${isWaste?" เช่น ไข่แตก":""} (ถ้ามี)"/>
+    ${isWaste?`<div class="block" style="margin-top:8px"><div class="row"><span>มูลค่าของเสีย ≈</span><b class="tnum" id="wastePrev" style="color:#c0392b">฿0.00</b></div></div>`:""}
+    <div class="cmeta" style="margin-top:8px">${isWaste?"บันทึกเป็นการตัดสต็อกออก (ของเสีย) + เก็บ snapshot ต้นทุน ณ วันที่ทิ้ง":"ระบบจะปรับยอดให้เท่ากับที่นับได้ โดยบันทึกส่วนต่างเป็นการปรับสต็อก — ใช้ตั้งยอดตั้งต้น/แก้ติดลบได้"}</div>
     <button class="savebtn" id="adjGo" style="margin-top:14px">${isWaste?"บันทึกของเสีย":"ปรับยอด"}</button>`);
+  if(isWaste){const q=document.getElementById("adjQty"),pv=document.getElementById("wastePrev");if(q&&pv)q.oninput=()=>{const v=Math.abs(parseFloat(q.value)||0);pv.textContent=fmtTHB(v*unitCostNow);};}
   document.getElementById("adjGo").onclick=async()=>{
     const v=parseFloat(val("adjQty"));if(isNaN(v)){toast("ใส่จำนวน");return;}
     const note=val("adjNote").trim()||null;let delta,kind;
     if(isWaste){if(v<=0){toast("จำนวนต้องมากกว่า 0");return;}delta=-Math.abs(v);kind="waste";}
     else{delta=v-cur;kind="adjust";if(delta===0){toast("ยอดตรงอยู่แล้ว");return;}}
     const btn=document.getElementById("adjGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
-    try{await post(state.s,"stock_movements",{store_id:state.data.store.id,inventory_item_id:ing.id,qty_delta:delta,kind,ref_type:"manual",occurred_at:new Date().toISOString(),note},"return=minimal");await reloadData();closeSheet();toast(isWaste?"บันทึกของเสียแล้ว":"ปรับยอดแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id)||ing);}
+    const unit_cost=isWaste?(st?Number(st.avg_cost)||ingCostPerUnit(ing.id,monthOf(new Date()))||0:ingCostPerUnit(ing.id,monthOf(new Date()))||0):null;
+    try{await post(state.s,"stock_movements",{store_id:state.data.store.id,inventory_item_id:ing.id,qty_delta:delta,kind,ref_type:"manual",unit_cost,occurred_at:new Date().toISOString(),note},"return=minimal");await reloadData();closeSheet();toast(isWaste?"บันทึกของเสียแล้ว":"ปรับยอดแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id)||ing);}
     catch(e){toast(e.message);btn.disabled=false;btn.textContent=isWaste?"บันทึกของเสีย":"ปรับยอด";}
   };
 }
