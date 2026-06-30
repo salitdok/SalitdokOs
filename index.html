@@ -251,7 +251,7 @@ async function loadMaster(s,storeId){
   const menu=await rest(s,`menu_items?select=id,name,name_en,product_type,price,cost,category,sort_order,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
   const addons=await rest(s,`addons?select=id,name,price,is_active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${storeId}`);
-  let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit&store_id=eq.${storeId}&order=name.asc`);
+  let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit,reorder_level&store_id=eq.${storeId}&order=name.asc`);
   if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${storeId}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
   const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note&store_id=eq.${storeId}&order=purchased_at.desc`);
   const purchases=purRaw.map(p=>({...p,item_id:p.inventory_item_id||p.ingredient_id}));
@@ -260,7 +260,8 @@ async function loadMaster(s,storeId){
   const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
   const pkgDefaults=await safeRest(s,`packaging_defaults?select=id,source,inventory_item_id,menu_item_id,qty,toggle_key,active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
   const channelPrices=await safeRest(s,`channel_prices?select=id,source,menu_item_id,addon_id,price,active&store_id=eq.${storeId}`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices};
+  const stock=await safeRest(s,`v_stock_valuation?select=inventory_item_id,on_hand,avg_cost,stock_value,reorder_level,low_stock&store_id=eq.${storeId}`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -268,7 +269,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -977,10 +978,19 @@ function menuItemsHTML(){
   if(!list.length)return `<div class="empty">ไม่มีเมนูในหมวดนี้</div>`;
   return list.map(m=>{const sp=menuCostSplit(m.id,cur),has=recipeRowsFor(m.id).length>0||(m.cost!=null&&m.cost!=="");const cogs=sp.total,profit=Number(m.price)-cogs,fc=Number(m.price)>0?Math.round(sp.food/Number(m.price)*100):0;return `<div class="mmrow ${m.is_active===false?"off":""}"><span style="width:6px;align-self:stretch;border-radius:4px;background:${m.category?catColor(m.category):"transparent"};flex:none"></span><button class="mmmain" data-edit-menu="${m.id}"><div class="mmname">${esc(m.name)}</div><div class="mmsub">${fmtTHB(m.price)}${has?` · ต้นทุน ${fmtTHB(cogs)} (อ ${fmtTHB(sp.food)}/บ ${fmtTHB(sp.pkg)}) · กำไร ${fmtTHB(profit)} · FC ${fc}%`:" · ยังไม่มีสูตร"}${m.category?` · ${esc(m.category)}`:""}</div></button><button class="toggle ${m.is_active===false?"":"on"}" data-toggle-menu="${m.id}">${m.is_active===false?"ปิดขาย":"ขายอยู่"}</button><span class="chev">›</span></div>`;}).join("");}
 function addonsHTML(){if(!state.data.addons.length)return `<div class="empty">ยังไม่มี Add-on — กด “＋ Add-on”<br>เช่น ไข่ดาว +10, เพิ่มข้าว +10</div>`;const cur=monthOf(new Date());return state.data.addons.map(a=>{const sp=addonCostSplit(a.id,cur),has=recipeRowsForAddon(a.id).length>0,cogs=sp.total,profit=Number(a.price)-cogs,fc=Number(a.price)>0?Math.round(sp.food/Number(a.price)*100):0;return `<div class="mmrow ${a.is_active===false?"off":""}"><button class="mmmain" data-edit-addon="${a.id}"><div class="mmname">${esc(a.name)} <span style="color:${BRAND.orange}">+${fmtTHB(a.price)}</span></div><div class="mmsub">${has?`ต้นทุน ${fmtTHB(cogs)} (อ ${fmtTHB(sp.food)}/บ ${fmtTHB(sp.pkg)}) · กำไร ${fmtTHB(profit)} · FC ${fc}%`:"ยังไม่มีสูตรต้นทุน"}</div></button><button class="toggle ${a.is_active===false?"":"on"}" data-toggle-addon="${a.id}">${a.is_active===false?"ปิด":"เปิด"}</button><span class="chev">›</span></div>`;}).join("");}
+function stockMap(){const m={};for(const s of (state.data.stock||[]))m[s.inventory_item_id]=s;return m;}
 function ingredientsHTML(){
   const filt=state.invKind,list=state.data.inv.filter(i=>!filt||(i.kind||"food")===filt);
   if(!list.length)return `<div class="empty">${filt?"ยังไม่มีรายการในหมวดนี้":"ยังไม่มีวัตถุดิบ/บรรจุภัณฑ์ — กด “＋ รายการ”<br>เช่น หมูสับ (g, อาหาร), กล่องข้าว (ชิ้น, บรรจุภัณฑ์)"}</div>`;
-  const cur=monthOf(new Date());return list.map(i=>{const c=ingCostPerUnit(i.id,cur),k=i.kind||"food";return `<div class="mmrow"><span style="width:8px;height:8px;border-radius:99px;background:${KIND_COLOR[k]};flex:none"></span><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span></div><div class="mmsub">${c>0?`฿${fmt2(c)}/${esc(i.base_unit)} (เฉลี่ยเดือนนี้)`:"ยังไม่มีราคาซื้อ"} · หน่วย ${esc(i.base_unit)}</div></button><span class="chev">›</span></div>`;}).join("");}
+  const sm=stockMap(),cur=monthOf(new Date());
+  let totVal=0,lowN=0;for(const i of list){const st=sm[i.id];if(st){totVal+=Number(st.stock_value)||0;if(st.low_stock)lowN++;}}
+  const summary=`<div class="block" style="margin:0 0 10px"><div class="row"><span class="cmeta">มูลค่าสต็อกรวม (${filt?KIND_TH[filt]:"ทั้งหมด"})</span><b class="tnum">${fmtTHB(totVal)}</b></div>${lowN?`<div class="row" style="margin-top:4px"><span class="cmeta">⚠️ ของใกล้หมด</span><b class="tnum" style="color:#c0392b">${lowN} รายการ</b></div>`:""}</div>`;
+  const rows=list.map(i=>{const c=ingCostPerUnit(i.id,cur),k=i.kind||"food",st=sm[i.id];const oh=st?Number(st.on_hand):0,val=st?Number(st.stock_value):0,low=st&&st.low_stock,neg=oh<0;
+    const ohTxt=`คงเหลือ <b class="tnum" style="color:${neg?"#c0392b":low?"#d9822b":"inherit"}">${fmt2(oh)}</b> ${esc(i.base_unit)} · มูลค่า ฿${fmt2(val)}`;
+    const badges=`<span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${low?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">⚠️ ใกล้หมด</span>`:""}${neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ติดลบ</span>`:""}`;
+    return `<div class="mmrow"><span style="width:8px;height:8px;border-radius:99px;background:${low||neg?"#c0392b":KIND_COLOR[k]};flex:none"></span><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)} ${badges}</div><div class="mmsub">${ohTxt}</div><div class="mmsub" style="opacity:.8">${c>0?`ต้นทุน ฿${fmt2(c)}/${esc(i.base_unit)}`:"ยังไม่มีราคาซื้อ"}${st&&st.reorder_level!=null?` · จุดสั่งซื้อ ${fmt2(st.reorder_level)}`:""}</div></button><span class="chev">›</span></div>`;}).join("");
+  return summary+rows;
+}
 function wireMenuList(){
   document.querySelectorAll("[data-edit-menu]").forEach(b=>b.onclick=()=>renderMenuEdit(state.data.menu.find(m=>m.id===b.dataset.editMenu)));
   document.querySelectorAll("[data-toggle-menu]").forEach(b=>b.onclick=async()=>{const m=state.data.menu.find(x=>x.id===b.dataset.toggleMenu);try{await patch(state.s,`menu_items?id=eq.${m.id}`,{is_active:!(m.is_active!==false)});await reloadData();renderMenu();}catch(e){toast(e.message);}});
@@ -1151,7 +1161,9 @@ function renderIngredientEdit(ing){
       <div class="fhint" style="margin-top:12px">ประเภทรายการ</div>
       <div class="chips" id="kindChips" style="margin-top:6px">${["food","packaging","supply"].map(k=>`<button class="chip sm ${k===kind?"active":""}" data-kind="${k}">${KIND_TH[k]}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">หน่วยที่ใช้ในสูตร</div>
-      <div class="chips" id="unitChips" style="margin-top:6px">${UNITS.map(u=>`<button class="chip sm ${u===baseUnit?"active":""}" data-unit="${u}">${u}</button>`).join("")}</div></div>
+      <div class="chips" id="unitChips" style="margin-top:6px">${UNITS.map(u=>`<button class="chip sm ${u===baseUnit?"active":""}" data-unit="${u}">${u}</button>`).join("")}</div>
+      <div class="fhint" style="margin-top:12px">จุดสั่งซื้อ — แจ้งเตือนเมื่อคงเหลือ ≤ ค่านี้ (เว้นว่าง = ไม่เตือน)</div>
+      <input id="igReorder" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="เช่น 20" value="${ing&&ing.reorder_level!=null?ing.reorder_level:""}"/></div>
     ${ing?`<div class="block"><div class="costsum">ต้นทุนเฉลี่ยเดือนนี้ ≈ <b>${avg>0?"฿"+fmt2(avg)+"/"+esc(ing.base_unit):"ยังไม่มีข้อมูลซื้อ"}</b></div></div>
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
@@ -1171,8 +1183,9 @@ async function saveIngredient(){
   const name=val("igName").trim();if(!name){toast("ใส่ชื่อรายการ");return;}
   const uc=document.querySelector("#unitChips .chip.active"),kc=document.querySelector("#kindChips .chip.active");
   const base_unit=uc?uc.dataset.unit:"g",kind=kc?kc.dataset.kind:"food",reason=val("rsnIng");
+  const rlRaw=(val("igReorder")||"").trim(),reorder_level=rlRaw===""?null:(isNaN(parseFloat(rlRaw))?null:parseFloat(rlRaw));
   const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
-  try{if(editingIng){await withReason(reason,()=>patch(state.s,`inventory_items?id=eq.${editingIng.id}`,{name,base_unit,kind}));await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await withReason(reason,()=>post(state.s,"inventory_items",{store_id:state.data.store.id,name,base_unit,kind},"return=representation"));await reloadData();renderIngredientEdit(state.data.inv.find(i=>i.id===r[0].id));toast("เพิ่มรายการแล้ว — บันทึกการซื้อต่อได้เลย");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+  try{if(editingIng){await withReason(reason,()=>patch(state.s,`inventory_items?id=eq.${editingIng.id}`,{name,base_unit,kind,reorder_level}));await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await withReason(reason,()=>post(state.s,"inventory_items",{store_id:state.data.store.id,name,base_unit,kind,reorder_level},"return=representation"));await reloadData();renderIngredientEdit(state.data.inv.find(i=>i.id===r[0].id));toast("เพิ่มรายการแล้ว — บันทึกการซื้อต่อได้เลย");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
 }
 async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&inventory_item_id=eq.${ing.id}&limit=1`);if(used.length){toast("รายการนี้ถูกใช้ในสูตร — เอาออกจากสูตรก่อน");return;}await withReason(val("rsnIng"),async()=>{await del(state.s,`ingredient_purchases?inventory_item_id=eq.${ing.id}`);await del(state.s,`inventory_items?id=eq.${ing.id}`);});await reloadData();renderMenu();toast("ลบรายการแล้ว");}catch(e){toast(e.message);}}
 function renderPurchase(ing,existing){
