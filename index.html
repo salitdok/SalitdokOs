@@ -1179,7 +1179,7 @@ function openEditOrder(o){
   state.prev="orders";const mm=menuMap(),am=addonMap();
   draft={editId:o.id,source:o.source||"manual",cart:{},orderedAt:toLocalInput(new Date(o.ordered_at)),customer:{mode:"new"}};
   if(o.customer_id){const c=state.data.customers.find(x=>x.id===o.customer_id);draft.customer=c?{mode:"existing",id:c.id,name:c.name,c}:{mode:"existing",id:o.customer_id,name:(o.customers&&o.customers.name)||"ลูกค้า",c:{name:(o.customers&&o.customers.name)||"ลูกค้า",total_orders:0,total_spent:0}};}
-  for(const it of o.order_items||[]){const m=mm[it.menu_item_id];const addons={};for(const oia of it.order_item_addons||[]){const a=am[oia.addon_id];if(oia.addon_id)addons[oia.addon_id]={name:a?a.name:oia.name,price:a?Number(a.price):Number(oia.price)};}draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?Number(m.price):Number(it.unit_price),qty:Number(it.quantity)||1,addons};}
+  for(const it of o.order_items||[]){const m=mm[it.menu_item_id];const addons={};for(const oia of it.order_item_addons||[]){const a=am[oia.addon_id];if(oia.addon_id)addons[oia.addon_id]={name:a?a.name:oia.name,price:Number(oia.price)};}draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:Number(it.unit_price),qty:Number(it.quantity)||1,addons};}
   draft.packaging=(o.order_packaging||[]).map(p=>({item_id:p.inventory_item_id,qty:Number(p.qty)}));draft.pkgRemoved={};draft.pkgLoaded=true;
   renderAdd();
 }
@@ -1192,7 +1192,7 @@ function renderAdd(){
       <div id="custArea"></div>
     </div>
     <div class="blocktitle">เมนู</div>
-    <div class="block" id="menuList">${menu.map(m=>`<div class="mrow" id="row_${m.id}"><div class="mrowtop"><div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(m.price)}</div></div><div class="stepper"><button class="step minus" data-id="${m.id}" data-dir="-1">−</button><span class="cnt" id="cnt_${m.id}">0</span><button class="step plus" data-id="${m.id}" data-dir="1">+</button></div></div><div class="rowaddons" id="ad_${m.id}"></div></div>`).join("")||`<div class="empty">ยังไม่มีเมนูที่เปิดขาย — ไปเพิ่มที่แท็บเมนู</div>`}</div>
+    <div class="block" id="menuList">${menu.map(m=>{const pr=priceFor(m,draft.source),diff=hasChannelPrice("menu",m.id,draft.source);return `<div class="mrow" id="row_${m.id}"><div class="mrowtop"><div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(pr)}${diff?` <span class="badge" style="background:${BRAND.orange}22;color:${BRAND.orange};font-size:10px">${SRC_MAP[draft.source]||""}</span>`:""}</div></div><div class="stepper"><button class="step minus" data-id="${m.id}" data-dir="-1">−</button><span class="cnt" id="cnt_${m.id}">0</span><button class="step plus" data-id="${m.id}" data-dir="1">+</button></div></div><div class="rowaddons" id="ad_${m.id}"></div></div>`;}).join("")||`<div class="empty">ยังไม่มีเมนูที่เปิดขาย — ไปเพิ่มที่แท็บเมนู</div>`}</div>
     <div class="blocktitle">เวลาออเดอร์</div>
     <div class="block"><input type="datetime-local" id="orderedAt" class="nin" style="margin-top:0" value="${esc(draft.orderedAt)}"><div class="cmeta" style="margin-top:6px">ปรับย้อนหลังได้ เช่น ใส่ออเดอร์ของวันที่ 1</div></div>
     <div class="blocktitle">ช่องทาง</div>
@@ -1204,8 +1204,8 @@ function renderAdd(){
     <div style="height:90px"></div>
     <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button>${isEdit?"":`<button class="ghostbtn" id="saveNextBtn" style="margin-top:10px" disabled>＋ บันทึก & เพิ่มออเดอร์ถัดไป</button>`}</div></div>`;
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
-  document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:Number(m.price),qty:next,addons:{}};syncMenu();});
-  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;document.querySelectorAll("#srcChips .chip").forEach(x=>x.classList.toggle("active",x===c));mergePackagingDefaults();renderPackaging();});
+  document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:priceFor(m,draft.source),qty:next,addons:{}};syncMenu();});
+  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;repriceCart();renderAdd();});
   document.getElementById("addPkg").onclick=togglePkgPicker;
   document.getElementById("orderedAt").onchange=()=>{renderPackaging();};
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{const m=b.dataset.cm,curSeg=draft.customer.mode==="existing"?"search":draft.customer.mode;if(m===curSeg)return;if(m==="search")draft.customer={mode:"search"};else{const d=draft.customer;draft.customer={mode:m,name:d.name,phone:d.phone,birthdate:d.birthdate,note:d.note};}renderCustArea();});
@@ -1245,7 +1245,7 @@ function selectExisting(cid){const c=state.data.customers.find(x=>x.id===cid);dr
 async function loadRepeat(){
   const rb=document.getElementById("repeatBtn");rb.textContent="กำลังดึงเมนูล่าสุด…";
   try{const items=await fetchLastOrderItems(state.s,state.data.store.id,draft.customer.id),mm=menuMap();draft.cart={};
-    for(const it of items){if(!it.menu_item_id)continue;const m=mm[it.menu_item_id];if(m&&m.is_active===false)continue;draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?Number(m.price):Number(it.unit_price),qty:Number(it.quantity)||1,addons:{}};}
+    for(const it of items){if(!it.menu_item_id)continue;const m=mm[it.menu_item_id];if(m&&m.is_active===false)continue;draft.cart[it.menu_item_id]={name:m?m.name:it.item_name,price:m?priceFor(m,draft.source):Number(it.unit_price),qty:Number(it.quantity)||1,addons:{}};}
     syncMenu();rb.textContent="⟳ ใส่เมนูล่าสุดให้แล้ว";if(!items.length)toast("ลูกค้านี้ยังไม่มีออเดอร์ก่อนหน้า");
   }catch(e){toast(e.message);rb.textContent="⟳ สั่งเหมือนเดิม (เมนูล่าสุด)";}
 }
@@ -1299,14 +1299,15 @@ function updateOrderCost(){
   const profit=sales-cogs;
   el.innerHTML=`<div class="row"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(food)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(pkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(con)}</b></div><div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(profit)}</b></div>`;
 }
+function repriceCart(){if(draft.editId)return;const mm=menuMap(),am=addonMap();for(const[id,e]of Object.entries(draft.cart||{})){const m=mm[id];if(m)e.price=priceFor(m,draft.source);for(const aid of Object.keys(e.addons||{})){const a=am[aid];if(a)e.addons[aid].price=addonPriceFor(a,draft.source);}}}
 function syncMenu(){
   let total=0,count=0;
   for(const m of state.data.menu){const e=draft.cart[m.id],q=e?e.qty:0;
     const cnt=document.getElementById("cnt_"+m.id);if(cnt)cnt.textContent=q;
     const row=document.getElementById("row_"+m.id);if(row)row.classList.toggle("on",q>0);
     const adbox=document.getElementById("ad_"+m.id);
-    if(adbox){const avail=q>0?addonsForMenu(m):[];adbox.innerHTML=avail.map(a=>`<button class="achip ${e&&e.addons[a.id]?"on":""}" data-mid="${m.id}" data-aid="${a.id}">+${esc(a.name)} ฿${Math.round(a.price)}</button>`).join("");
-      adbox.querySelectorAll(".achip").forEach(ch=>ch.onclick=()=>{const ee=draft.cart[ch.dataset.mid];if(!ee)return;const a=addonMap()[ch.dataset.aid];if(ee.addons[ch.dataset.aid])delete ee.addons[ch.dataset.aid];else ee.addons[ch.dataset.aid]={name:a.name,price:Number(a.price)};syncMenu();});}
+    if(adbox){const avail=q>0?addonsForMenu(m):[];adbox.innerHTML=avail.map(a=>`<button class="achip ${e&&e.addons[a.id]?"on":""}" data-mid="${m.id}" data-aid="${a.id}">+${esc(a.name)} ฿${Math.round(addonPriceFor(a,draft.source))}</button>`).join("");
+      adbox.querySelectorAll(".achip").forEach(ch=>ch.onclick=()=>{const ee=draft.cart[ch.dataset.mid];if(!ee)return;const a=addonMap()[ch.dataset.aid];if(ee.addons[ch.dataset.aid])delete ee.addons[ch.dataset.aid];else ee.addons[ch.dataset.aid]={name:a.name,price:addonPriceFor(a,draft.source)};syncMenu();});}
     if(q>0){const adSum=Object.values(e.addons).reduce((x,a)=>x+a.price,0);total+=(e.price+adSum)*q;count+=q;}
   }
   const btn=document.getElementById("saveBtn"),lbl=document.getElementById("saveLabel"),nbtn=document.getElementById("saveNextBtn");
