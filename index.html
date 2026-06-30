@@ -487,6 +487,15 @@ async function fetchReport(from,to){
   const cogs=await safeRest(state.s,`v_cogs_daily?store_id=eq.${sid}&sale_date=gte.${from}&sale_date=lte.${to}&order=sale_date.asc`);
   return {sales,cogs};
 }
+async function fetchChannelMargin(from,to){
+  const sid=state.data.store.id;
+  const start=new Date(from+"T00:00:00+07:00").toISOString(),end=new Date(to+"T23:59:59.999+07:00").toISOString();
+  const rows=await safeRest(state.s,`orders?select=source,net_total,food_cost_snapshot,packaging_cost_snapshot,consumable_cost_snapshot,cogs_snapshot&store_id=eq.${sid}&status=eq.completed&ordered_at=gte.${start}&ordered_at=lte.${end}`);
+  const g={};
+  for(const o of rows){const s=o.source||"manual";const e=g[s]||(g[s]={source:s,orders:0,sales:0,food:0,pkg:0,con:0,cogs:0});
+    e.orders++;e.sales+=Number(o.net_total)||0;e.food+=Number(o.food_cost_snapshot)||0;e.pkg+=Number(o.packaging_cost_snapshot)||0;e.con+=Number(o.consumable_cost_snapshot)||0;e.cogs+=Number(o.cogs_snapshot)||0;}
+  return Object.values(g).map(e=>({...e,aov:e.orders?e.sales/e.orders:0,gp:e.sales-e.cogs,margin:e.sales>0?Math.round((e.sales-e.cogs)/e.sales*100):0,gpPerOrder:e.orders?(e.sales-e.cogs)/e.orders:0})).sort((a,b)=>b.sales-a.sales);
+}
 async function renderReports(preset){
   state.view="reports";
   const r=state.reportRange||{preset:"month"};
@@ -520,6 +529,20 @@ async function renderReports(preset){
     const byDay={};for(const x of sales)byDay[x.sale_date]=(byDay[x.sale_date]||0)+Number(x.sales||0);
     const days=Object.keys(byDay).sort();
     const cell=(l,v,sub)=>`<div class="anum"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:17px">${v}</div>${sub?`<div class="anumlabel" style="margin-top:2px">${sub}</div>`:""}</div>`;
+    const chm=await fetchChannelMargin(r.from,r.to);
+    const chMax=Math.max(1,...chm.map(x=>x.sales));
+    const chSection=chm.length?`<div class="sec"><div class="sectitle">💹 Margin ต่อช่องทาง</div>${chm.map(x=>`<div class="block" style="margin-bottom:10px">
+        <div class="row"><b>${SRC_MAP[x.source]||x.source}</b><b class="tnum">${fmtTHB(x.sales)}</b></div>
+        <div style="height:7px;border-radius:99px;background:#eee;margin:5px 0 6px;overflow:hidden"><div style="height:100%;width:${Math.round(x.sales/chMax*100)}%;background:${SRC_COLOR[x.source]||"#888"}"></div></div>
+        <div class="cmeta">${x.orders} ออเดอร์ · AOV ${fmtTHB(x.aov)} · กำไร/ออเดอร์ ${fmtTHB(x.gpPerOrder)}</div>
+        <div class="costsum" style="margin-top:7px">
+          <div class="row"><span>Food</span><b class="tnum">${fmtTHB(x.food)}</b></div>
+          <div class="row" style="margin-top:3px"><span>Packaging</span><b class="tnum">${fmtTHB(x.pkg)}</b></div>
+          <div class="row" style="margin-top:3px"><span>Consumable</span><b class="tnum">${fmtTHB(x.con)}</b></div>
+          <div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(x.cogs)}</b></div>
+          <div class="row" style="margin-top:3px"><span>Gross Profit</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(x.gp)}</b></div>
+          <div class="row" style="margin-top:3px"><span>Gross Margin</span><b class="tnum" style="color:${x.margin>=0?BRAND.up:"#c0392b"}">${x.margin}%</b></div>
+        </div></div>`).join("")}</div>`:"";
     document.getElementById("repBody").innerHTML=`
       <div class="sec"><div class="grid">
         ${cell("ยอดขาย",fmtTHB(totSales))}
@@ -527,14 +550,14 @@ async function renderReports(preset){
         ${cell("กำไรขั้นต้น",fmtTHB(gp),gpPct+"% ของยอด")}
         ${cell("COGS",fmtTHB(cg),fcPct+"% Food Cost")}
       </div></div>
-      <div class="sec"><div class="sectitle">แยกต้นทุน</div><div class="block"><div class="costsum">
+      <div class="sec"><div class="sectitle">แยกต้นทุน (รวมทุกช่องทาง)</div><div class="block"><div class="costsum">
         <div class="row"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(food)}</b></div>
         <div class="row" style="margin-top:4px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(pkg)}</b></div>
         <div class="row" style="margin-top:4px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(con)}</b></div>
         <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cg)}</b></div>
         <div class="row" style="margin-top:4px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(gp)}</b></div>
       </div></div></div>
-      ${srcRows.length?`<div class="sec"><div class="sectitle">ยอดขายตามช่องทาง</div><div class="block">${srcRows.map(([s,v])=>`<div style="margin-bottom:10px"><div class="row"><span>${SRC_MAP[s]||s}</span><b class="tnum">${fmtTHB(v)}</b></div><div style="height:7px;border-radius:99px;background:#eee;margin-top:4px;overflow:hidden"><div style="height:100%;width:${Math.round(v/srcMax*100)}%;background:${SRC_COLOR[s]||"#888"}"></div></div></div>`).join("")}</div></div>`:""}
+      ${chSection}
       ${days.length?`<div class="sec"><div class="sectitle">รายวัน</div><div class="block">${days.map(d=>`<div class="row" style="margin-bottom:6px"><span class="cmeta">${d}</span><b class="tnum">${fmtTHB(byDay[d])}</b></div>`).join("")}</div></div>`:`<div class="empty">ยังไม่มียอดขายในช่วงนี้</div>`}
       <div style="height:20px"></div>`;
   }catch(e){document.getElementById("repBody").innerHTML=`<div class="empty">โหลดรายงานไม่สำเร็จ: ${esc(e.message)}</div>`;}
