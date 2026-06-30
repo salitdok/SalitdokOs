@@ -240,7 +240,7 @@ async function loadOrders(s,storeId,sinceISO){
   try{return await rest(s,oxA);}catch(e){try{return await rest(s,oxB);}catch(e2){return await rest(s,oxC);}}
 }
 async function loadCustomers(s,storeId){
-  return rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${storeId}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
+  return rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,acquisition_source,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${storeId}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
 }
 async function loadLoyalty(s,storeId){
   const since=new Date(Date.now()-95*DAY).toISOString();
@@ -292,6 +292,11 @@ function ctypeBadge(t){const[,label,col]=ctypeOf(t);return `<span class="badge" 
 function ctypeChips(id,sel){return `<div class="fhint" style="margin-top:12px">ประเภทลูกค้า</div><div class="chips" id="${id}" style="margin-top:6px">${CTYPES.map(([k,l])=>`<button type="button" class="chip sm ${k===(sel||'new')?'active':''}" data-ct="${k}">${l}</button>`).join("")}</div>`;}
 function wireCtypeChips(id){document.querySelectorAll(`#${id} .chip`).forEach(c=>c.onclick=()=>document.querySelectorAll(`#${id} .chip`).forEach(x=>x.classList.toggle("active",x===c)));}
 function selectedCtype(id){const a=document.querySelector(`#${id} .chip.active`);return a?a.dataset.ct:"new";}
+const ACQ=[["lineman","LINE MAN"],["grab","Grab"],["shopee","Shopee"],["walkin","หน้าร้าน"],["phone","โทรศัพท์"],["facebook","Facebook"],["returning","ลูกค้าเก่า"],["other","อื่น ๆ"]];
+const acqLabel=v=>{const f=ACQ.find(x=>x[0]===v);return f?f[1]:null;};
+function acqChips(id,sel){return `<div class="fhint" style="margin-top:12px">แหล่งที่มาลูกค้า (รู้จักร้านจากไหน)</div><div class="chips" id="${id}" style="margin-top:6px">${ACQ.map(([k,l])=>`<button type="button" class="chip sm ${k===sel?"active":""}" data-acq="${k}">${l}</button>`).join("")}</div>`;}
+function wireAcqChips(id){document.querySelectorAll(`#${id} .chip`).forEach(c=>c.onclick=()=>{const on=c.classList.contains("active");document.querySelectorAll(`#${id} .chip`).forEach(x=>x.classList.remove("active"));if(!on)c.classList.add("active");});}
+function selectedAcq(id){const a=document.querySelector(`#${id} .chip.active`);return a?a.dataset.acq:null;}
 const fmtBirth=b=>b?new Intl.DateTimeFormat("th-TH",{day:"numeric",month:"long"}).format(new Date(b+"T00:00:00")):null;
 const LEVELS={new:["ใหม่","#6B7280"],regular:["ปกติ","#0E9F6E"],silver:["Silver","#94A3B8"],gold:["Gold","#C99A2E"],platinum:["Platinum","#7C3AED"],vip:["VIP","#F2691E"]};
 const LEVEL_ORDER=["new","regular","silver","gold","platinum","vip"];
@@ -673,11 +678,12 @@ function renderAddCustomer(){
     <div class="block"><input id="acName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="acPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี)" inputmode="tel"/>
       <div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="acBirth" class="nin" style="margin-top:6px"/>
       <input id="acNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)"/>
-      ${ctypeChips("acType","new")}</div>
+      ${ctypeChips("acType","new")}
+      ${acqChips("acAcq",null)}</div>
     <div style="height:80px"></div><div class="savebar"><button class="savebtn" id="save">บันทึกลูกค้า</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("dash");
-  wireCtypeChips("acType");
-  document.getElementById("save").onclick=async()=>{const name=val("acName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("acPhone").trim(),birthdate=val("acBirth")||null,note=val("acNote").trim()||null,customer_type=selectedCtype("acType");const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";try{await post(state.s,"customers",{store_id:state.data.store.id,name,phone:phone||null,birthdate,note,customer_type},"return=minimal");await reloadData();toast("เพิ่มลูกค้าแล้ว");navigate("customers");}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกลูกค้า";}};
+  wireCtypeChips("acType");wireAcqChips("acAcq");
+  document.getElementById("save").onclick=async()=>{const name=val("acName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("acPhone").trim(),birthdate=val("acBirth")||null,note=val("acNote").trim()||null,customer_type=selectedCtype("acType"),acquisition_source=selectedAcq("acAcq");const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";try{await post(state.s,"customers",{store_id:state.data.store.id,name,phone:phone||null,birthdate,note,customer_type,acquisition_source},"return=minimal");await reloadData();toast("เพิ่มลูกค้าแล้ว");navigate("customers");}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกลูกค้า";}};
 }
 function srcBadge(src){const c=SRC_COLOR[src]||"#6B7280";return `<span class="badge" style="background:${c}22;color:${c}">${SRC_MAP[src]||src}</span>`;}
 function renderOrders(list){
@@ -719,7 +725,7 @@ function renderCustomerDetail(c){
   const st=loyaltyStats()[c.id]||{s30:0,s90:0},lvl=customerLevel(c,st),avg=c.total_orders?Number(c.total_spent)/c.total_orders:0,since=daysSince(c.last_order_at);
   const cell=(l,v)=>`<div class="anum" style="padding:11px"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:16px">${v}</div></div>`;
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ลูกค้า</div></div>
-    <div class="block"><div class="selbox"><div class="row"><div class="mmname">${esc(c.name)}</div>${levelBadge(lvl)}</div><div class="cmeta" style="margin-top:6px">${ctypeBadge(c.customer_type)} ${c.phone?" · "+esc(c.phone):""}</div>${bd?`<div class="cmeta" style="margin-top:6px">🎂 วันเกิด ${esc(bd)}${age!=null?` · อายุ ${age} ปี`:""}</div>`:""}${c.note?`<div class="cmeta" style="margin-top:4px">📝 ${esc(c.note)}</div>`:""}</div></div>
+    <div class="block"><div class="selbox"><div class="row"><div class="mmname">${esc(c.name)}</div>${levelBadge(lvl)}</div><div class="cmeta" style="margin-top:6px">${ctypeBadge(c.customer_type)} ${c.phone?" · "+esc(c.phone):""}</div>${acqLabel(c.acquisition_source)?`<div class="cmeta" style="margin-top:4px">📍 มาจาก ${esc(acqLabel(c.acquisition_source))}</div>`:""}${bd?`<div class="cmeta" style="margin-top:6px">🎂 วันเกิด ${esc(bd)}${age!=null?` · อายุ ${age} ปี`:""}</div>`:""}${c.note?`<div class="cmeta" style="margin-top:4px">📝 ${esc(c.note)}</div>`:""}</div></div>
     <div class="block"><div class="grid">
       ${cell("ยอดซื้อสะสม",fmtTHB(c.total_spent))}
       ${cell("ยอด 30 วัน",fmtTHB(st.s30))}
@@ -746,11 +752,12 @@ function renderCustomerEdit(c){
     <div class="block"><input id="ceName" class="nin" style="margin-top:0" value="${esc(c.name)}" placeholder="ชื่อลูกค้า" autocapitalize="words"/><input id="cePhone" class="nin" value="${esc(c.phone||"")}" placeholder="เบอร์โทร" inputmode="tel"/>
       <div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="ceBirth" class="nin" style="margin-top:6px" value="${esc(c.birthdate||"")}"/>
       <input id="ceNote" class="nin" value="${esc(c.note||"")}" placeholder="หมายเหตุ (ถ้ามี)"/>
-      ${ctypeChips("ceType",c.customer_type)}</div>
+      ${ctypeChips("ceType",c.customer_type)}
+      ${acqChips("ceAcq",c.acquisition_source)}</div>
     <div style="height:80px"></div><div class="savebar"><button class="savebtn" id="save">บันทึก</button></div></div>`;
   document.getElementById("back").onclick=()=>renderCustomerDetail(c);
-  wireCtypeChips("ceType");
-  document.getElementById("save").onclick=async()=>{const name=val("ceName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("cePhone").trim(),birthdate=val("ceBirth")||null,note=val("ceNote").trim()||null,customer_type=selectedCtype("ceType");try{await patch(state.s,`customers?id=eq.${c.id}`,{name,phone:phone||null,birthdate,note,customer_type});await reloadData();toast("บันทึกแล้ว");const nc=state.data.customers.find(x=>x.id===c.id)||{...c,name,phone,birthdate,note,customer_type};renderCustomerDetail(nc);}catch(e){toast(e.message);}};
+  wireCtypeChips("ceType");wireAcqChips("ceAcq");
+  document.getElementById("save").onclick=async()=>{const name=val("ceName").trim();if(!name){toast("ใส่ชื่อลูกค้า");return;}const phone=val("cePhone").trim(),birthdate=val("ceBirth")||null,note=val("ceNote").trim()||null,customer_type=selectedCtype("ceType"),acquisition_source=selectedAcq("ceAcq");try{await patch(state.s,`customers?id=eq.${c.id}`,{name,phone:phone||null,birthdate,note,customer_type,acquisition_source});await reloadData();toast("บันทึกแล้ว");const nc=state.data.customers.find(x=>x.id===c.id)||{...c,name,phone,birthdate,note,customer_type,acquisition_source};renderCustomerDetail(nc);}catch(e){toast(e.message);}};
 }
 function renderMenu(){
   const seg=state.menuSeg;
@@ -1105,8 +1112,8 @@ function renderAdd(){
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{const m=b.dataset.cm,curSeg=draft.customer.mode==="existing"?"search":draft.customer.mode;if(m===curSeg)return;if(m==="search")draft.customer={mode:"search"};else{const d=draft.customer;draft.customer={mode:m,name:d.name,phone:d.phone,birthdate:d.birthdate,note:d.note};}renderCustArea();});
   renderCustArea();mergePackagingDefaults();renderPackaging();syncMenu();
 }
-function custFormHTML(){const d=draft.customer;return `<input id="cfName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า (จำเป็น)" value="${esc(d.name||"")}" autocapitalize="words"/><input id="cfPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี — ไว้ค้นเจอ/ทำโปรวันเกิด)" inputmode="tel" value="${esc(d.phone||"")}"/><div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="cfBirth" class="nin" style="margin-top:6px" value="${esc(d.birthdate||"")}"/><input id="cfNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)" value="${esc(d.note||"")}"/>`;}
-function wireCustForm(){const map={cfName:"name",cfPhone:"phone",cfBirth:"birthdate",cfNote:"note"};Object.entries(map).forEach(([id,k])=>{const el=document.getElementById(id);if(el)el.oninput=()=>{draft.customer[k]=el.value;};});}
+function custFormHTML(){const d=draft.customer;return `<input id="cfName" class="nin" style="margin-top:0" placeholder="ชื่อลูกค้า (จำเป็น)" value="${esc(d.name||"")}" autocapitalize="words"/><input id="cfPhone" class="nin" placeholder="เบอร์โทร (ถ้ามี — ไว้ค้นเจอ/ทำโปรวันเกิด)" inputmode="tel" value="${esc(d.phone||"")}"/><div class="fhint" style="margin-top:12px">วันเกิด (ถ้ามี — ไว้ทำโปรวันเกิด)</div><input type="date" id="cfBirth" class="nin" style="margin-top:6px" value="${esc(d.birthdate||"")}"/><input id="cfNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)" value="${esc(d.note||"")}"/>${acqChips("cfAcq",d.acq||null)}`;}
+function wireCustForm(){const map={cfName:"name",cfPhone:"phone",cfBirth:"birthdate",cfNote:"note"};Object.entries(map).forEach(([id,k])=>{const el=document.getElementById(id);if(el)el.oninput=()=>{draft.customer[k]=el.value;};});if(document.getElementById("cfAcq")){wireAcqChips("cfAcq");document.querySelectorAll("#cfAcq .chip").forEach(c=>c.addEventListener("click",()=>{draft.customer.acq=selectedAcq("cfAcq");}));}}
 function renderCustArea(){
   const area=document.getElementById("custArea"),cu=draft.customer;
   const segActive=cu.mode==="existing"?"search":cu.mode;
@@ -1224,7 +1231,8 @@ async function saveOrder(){
       const birthdate=(val("cfBirth")||draft.customer.birthdate||"")||null;
       const note=(val("cfNote")||draft.customer.note||"").trim()||null;
       const customer_type=draft.customer.mode==="imported"?"imported":"new";
-      let c;try{c=await post(state.s,"customers",{store_id,name,phone:phone||null,birthdate,note,customer_type},"return=representation");}catch(e){toast("บันทึกลูกค้าไม่สำเร็จ: "+e.message);btn.disabled=false;lbl.textContent=old;return;}
+      const acquisition_source=selectedAcq("cfAcq")||draft.customer.acq||null;
+      let c;try{c=await post(state.s,"customers",{store_id,name,phone:phone||null,birthdate,note,customer_type,acquisition_source},"return=representation");}catch(e){toast("บันทึกลูกค้าไม่สำเร็จ: "+e.message);btn.disabled=false;lbl.textContent=old;return;}
       customer_id=c&&c[0]&&c[0].id;
       if(!customer_id){toast("สร้างลูกค้าไม่สำเร็จ — ยังไม่บันทึกออเดอร์");btn.disabled=false;lbl.textContent=old;return;}
     }else{
