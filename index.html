@@ -507,9 +507,9 @@ async function renderReports(preset){
   const presets=[["today","วันนี้"],["7d","7 วัน"],["month","เดือนนี้"],["custom","กำหนดเอง"]];
   const chips=presets.map(([k,l])=>`<button class="chip ${r.preset===k?"active":""}" data-rp="${k}">${l}</button>`).join("");
   const customBar=r.preset==="custom"?`<div class="block" style="display:flex;gap:8px;align-items:center"><input type="date" id="rFrom" class="nin" style="margin-top:0" value="${esc(r.from)}"><span>ถึง</span><input type="date" id="rTo" class="nin" style="margin-top:0" value="${esc(r.to)}"><button class="chip active" id="rGo">ดู</button></div>`:"";
-  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย";
+  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":tab==="crm"?"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย":"มูลค่าของเสีย/ทิ้ง จาก stock_movements (kind=waste)";
   app.innerHTML=shell("reports",`<div class="phead"><div class="ptitle">รายงาน</div><button class="iconbtn" id="toDash">‹</button></div>
-    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button></div>
+    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button><button class="segbtn ${tab==="waste"?"on":""}" data-rt="waste">ของเสีย</button></div>
     <div class="block"><div class="chips" id="rpChips">${chips}</div></div>
     ${customBar}
     <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ${note}</div>
@@ -520,6 +520,7 @@ async function renderReports(preset){
   document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>renderReports(b.dataset.rp));
   if(r.preset==="custom"){document.getElementById("rGo").onclick=()=>{const f=val("rFrom"),t=val("rTo");if(f&&t){state.reportRange={preset:"custom",from:f,to:t};renderReports();}};}
   if(tab==="crm"){fillCRMReport(r);return;}
+  if(tab==="waste"){fillWasteReport(r);return;}
   try{
     const {sales,cogs}=await fetchReport(r.from,r.to);
     const totSales=sales.reduce((a,x)=>a+Number(x.sales||0),0),totOrders=sales.reduce((a,x)=>a+Number(x.orders_count||0),0);
@@ -562,6 +563,26 @@ async function renderReports(preset){
       ${days.length?`<div class="sec"><div class="sectitle">รายวัน</div><div class="block">${days.map(d=>`<div class="row" style="margin-bottom:6px"><span class="cmeta">${d}</span><b class="tnum">${fmtTHB(byDay[d])}</b></div>`).join("")}</div></div>`:`<div class="empty">ยังไม่มียอดขายในช่วงนี้</div>`}
       <div style="height:20px"></div>`;
   }catch(e){document.getElementById("repBody").innerHTML=`<div class="empty">โหลดรายงานไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
+async function fillWasteReport(r){
+  const body=document.getElementById("repBody");if(!body)return;
+  body.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
+  try{
+    const sid=state.data.store.id;
+    const start=new Date(r.from+"T00:00:00+07:00").toISOString(),end=new Date(r.to+"T23:59:59.999+07:00").toISOString();
+    const rows=await safeRest(state.s,`stock_movements?select=inventory_item_id,qty_delta,unit_cost,occurred_at,note&store_id=eq.${sid}&kind=eq.waste&occurred_at=gte.${start}&occurred_at=lte.${end}&order=occurred_at.desc`);
+    const sm=stockMap(),im=ingMap(),byDay={};let grand=0;
+    for(const m of rows){const d=bkkDate(new Date(m.occurred_at)),it=im[m.inventory_item_id],st=sm[m.inventory_item_id];
+      const qty=Math.abs(Number(m.qty_delta)||0),cpu=(m.unit_cost!=null&&Number(m.unit_cost)>0)?Number(m.unit_cost):(st?Number(st.avg_cost)||0:0),v=qty*cpu;grand+=v;
+      (byDay[d]=byDay[d]||{items:[],total:0});byDay[d].items.push({name:it?it.name:"?",unit:it?it.base_unit:"",qty,cpu,v,note:m.note});byDay[d].total+=v;}
+    const days=Object.keys(byDay).sort((a,b)=>b.localeCompare(a));
+    body.innerHTML=`<div class="sec"><div class="grid">
+        <div class="anum"><div class="anumlabel">มูลค่าของเสียรวม</div><div class="anumval tnum" style="font-size:17px;color:#c0392b">${fmtTHB(grand)}</div></div>
+        <div class="anum"><div class="anumlabel">จำนวนครั้ง</div><div class="anumval tnum" style="font-size:17px">${rows.length}</div></div>
+      </div></div>
+      ${days.length?days.map(d=>`<div class="sec"><div class="sectitle">${d} · รวม ${fmtTHB(byDay[d].total)}</div><div class="block">${byDay[d].items.map(x=>`<div style="margin-bottom:9px"><div class="row"><span>${esc(x.name)} <span class="cmeta">×${fmt2(x.qty)} ${esc(x.unit)}</span></span><b class="tnum" style="color:#c0392b">${fmtTHB(x.v)}</b></div><div class="cmeta">฿${fmt2(x.cpu)}/${esc(x.unit)}${x.note?` · ${esc(x.note)}`:""}</div></div>`).join("")}</div></div>`).join(""):`<div class="empty">ไม่มีของเสียในช่วงนี้ 🎉</div>`}
+      <div class="cmeta" style="margin-top:8px">มูลค่าคิดจาก unit_cost ที่บันทึก ถ้าไม่มีใช้ต้นทุนเฉลี่ย (avg cost)</div><div style="height:20px"></div>`;
+  }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 function fillCRMReport(r){
   const body=document.getElementById("repBody");if(!body)return;
@@ -904,6 +925,7 @@ function renderMenu(){
   if(seg==="ingredients"){const cur=state.invKind||"__all";
     filterBar=`<div style="display:flex;gap:8px;overflow-x:auto;padding:0 20px 12px;-webkit-overflow-scrolling:touch">
       <button class="chip sm invf ${cur==="__all"?"active":""}" data-kind="__all" style="flex:0 0 auto">ทั้งหมด</button>
+      <button class="chip sm invf ${cur==="__low"?"active":""}" data-kind="__low" style="flex:0 0 auto;${cur==="__low"?"":"color:#c0392b"}">⚠️ ใกล้หมด</button>
       ${["food","packaging","supply"].map(k=>`<button class="chip sm invf ${cur===k?"active":""}" data-kind="${k}" style="flex:0 0 auto"><span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:${KIND_COLOR[k]};margin-right:6px"></span>${KIND_TH[k]}</button>`).join("")}
     </div>`;}
   app.innerHTML=shell("menu",`<div class="phead"><div class="ptitle">เมนู</div><div style="display:flex;gap:8px">${headBtns}</div></div>
@@ -915,6 +937,7 @@ function renderMenu(){
   const ac=document.getElementById("addCat");if(ac)ac.onclick=renderCategoryManager;
   document.querySelectorAll(".catf").forEach(b=>b.onclick=()=>{state.menuFilter=b.dataset.cat==="__all"?null:b.dataset.cat;renderMenu();});
   document.querySelectorAll(".invf").forEach(b=>b.onclick=()=>{state.invKind=b.dataset.kind==="__all"?null:b.dataset.kind;renderMenu();});
+  const wr=document.getElementById("wasteRep");if(wr)wr.onclick=()=>{state.reportTab="waste";navigate("reports");};
   wireMenuList();
 }
 function renderCategoryManager(){
@@ -988,14 +1011,20 @@ function menuItemsHTML(){
 function addonsHTML(){if(!state.data.addons.length)return `<div class="empty">ยังไม่มี Add-on — กด “＋ Add-on”<br>เช่น ไข่ดาว +10, เพิ่มข้าว +10</div>`;const cur=monthOf(new Date());return state.data.addons.map(a=>{const sp=addonCostSplit(a.id,cur),has=recipeRowsForAddon(a.id).length>0,cogs=sp.total,profit=Number(a.price)-cogs,fc=Number(a.price)>0?Math.round(sp.food/Number(a.price)*100):0;return `<div class="mmrow ${a.is_active===false?"off":""}"><button class="mmmain" data-edit-addon="${a.id}"><div class="mmname">${esc(a.name)} <span style="color:${BRAND.orange}">+${fmtTHB(a.price)}</span></div><div class="mmsub">${has?`ต้นทุน ${fmtTHB(cogs)} (อ ${fmtTHB(sp.food)}/บ ${fmtTHB(sp.pkg)}) · กำไร ${fmtTHB(profit)} · FC ${fc}%`:"ยังไม่มีสูตรต้นทุน"}</div></button><button class="toggle ${a.is_active===false?"":"on"}" data-toggle-addon="${a.id}">${a.is_active===false?"ปิด":"เปิด"}</button><span class="chev">›</span></div>`;}).join("");}
 function stockMap(){const m={};for(const s of (state.data.stock||[]))m[s.inventory_item_id]=s;return m;}
 function ingredientsHTML(){
-  const filt=state.invKind,list=state.data.inv.filter(i=>!filt||(i.kind||"food")===filt);
-  if(!list.length)return `<div class="empty">${filt?"ยังไม่มีรายการในหมวดนี้":"ยังไม่มีวัตถุดิบ/บรรจุภัณฑ์ — กด “＋ รายการ”<br>เช่น หมูสับ (g, อาหาร), กล่องข้าว (ชิ้น, บรรจุภัณฑ์)"}</div>`;
-  const sm=stockMap(),cur=monthOf(new Date());
-  let totVal=0,lowN=0;for(const i of list){const st=sm[i.id];if(st){totVal+=Number(st.stock_value)||0;if(st.low_stock)lowN++;}}
-  const summary=`<div class="block" style="margin:0 0 10px"><div class="row"><span class="cmeta">มูลค่าสต็อกรวม (${filt?KIND_TH[filt]:"ทั้งหมด"})</span><b class="tnum">${fmtTHB(totVal)}</b></div>${lowN?`<div class="row" style="margin-top:4px"><span class="cmeta">⚠️ ของใกล้หมด</span><b class="tnum" style="color:#c0392b">${lowN} รายการ</b></div>`:""}</div>`;
+  const filt=state.invKind,sm=stockMap();
+  let list=state.data.inv.slice();
+  if(filt==="__low")list=list.filter(i=>{const st=sm[i.id];return st&&(st.low_stock||Number(st.on_hand)<0);});
+  else if(filt)list=list.filter(i=>(i.kind||"food")===filt);
+  // จัดเรียง: ใกล้หมด(ยังมี) → ติดลบ → หมด → ปกติ
+  const rank=i=>{const st=sm[i.id];const oh=st?Number(st.on_hand):0;if(st&&st.low_stock&&oh>0)return 0;if(oh<0)return 1;if(oh===0)return 2;return 3;};
+  list.sort((a,b)=>{const r=rank(a)-rank(b);return r!==0?r:String(a.name).localeCompare(String(b.name),"th");});
+  if(!list.length)return `<div class="empty">${filt==="__low"?"ไม่มีของใกล้หมด 🎉":filt?"ยังไม่มีรายการในหมวดนี้":"ยังไม่มีวัตถุดิบ/บรรจุภัณฑ์ — กด “＋ รายการ”<br>เช่น หมูสับ (g, อาหาร), กล่องข้าว (ชิ้น, บรรจุภัณฑ์)"}</div>`;
+  const cur=monthOf(new Date());
+  let totVal=0,lowN=0;for(const i of list){const st=sm[i.id];if(st){totVal+=Number(st.stock_value)||0;if(st.low_stock||Number(st.on_hand)<0)lowN++;}}
+  const summary=`<div class="block" style="margin:0 0 10px"><div class="row"><span class="cmeta">มูลค่าสต็อก${filt==="__low"?" (ใกล้หมด)":filt?" ("+KIND_TH[filt]+")":"รวม"}</span><b class="tnum">${fmtTHB(totVal)}</b></div>${lowN?`<div class="row" style="margin-top:4px"><span class="cmeta">⚠️ ของใกล้หมด/ติดลบ</span><b class="tnum" style="color:#c0392b">${lowN} รายการ</b></div>`:""}<button class="ghostbtn" id="wasteRep" style="margin-top:10px">🗑️ รายงานของเสีย</button></div>`;
   const rows=list.map(i=>{const c=ingCostPerUnit(i.id,cur),k=i.kind||"food",st=sm[i.id];const oh=st?Number(st.on_hand):0,val=st?Number(st.stock_value):0,low=st&&st.low_stock,neg=oh<0;
     const ohTxt=`คงเหลือ <b class="tnum" style="color:${neg?"#c0392b":low?"#d9822b":"inherit"}">${fmt2(oh)}</b> ${esc(i.base_unit)} · มูลค่า ฿${fmt2(val)}`;
-    const badges=`<span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${low?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">⚠️ ใกล้หมด</span>`:""}${neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ติดลบ</span>`:""}`;
+    const badges=`<span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${low&&!neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">⚠️ ใกล้หมด</span>`:""}${neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ติดลบ</span>`:""}`;
     return `<div class="mmrow"><span style="width:8px;height:8px;border-radius:99px;background:${low||neg?"#c0392b":KIND_COLOR[k]};flex:none"></span><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)} ${badges}</div><div class="mmsub">${ohTxt}</div><div class="mmsub" style="opacity:.8">${c>0?`ต้นทุน ฿${fmt2(c)}/${esc(i.base_unit)}`:"ยังไม่มีราคาซื้อ"}${st&&st.reorder_level!=null?` · จุดสั่งซื้อ ${fmt2(st.reorder_level)}`:""}</div></button><span class="chev">›</span></div>`;}).join("");
   return summary+rows;
 }
