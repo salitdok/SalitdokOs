@@ -418,6 +418,55 @@ async function navigate(v){
   renderDash();
 }
 function handleAction(a){if(!a)return;if(a.type==="customer"){const c=state.data.customers.find(x=>x.id===a.cid);c?renderCustomerDetail(c):navigate("customers");}else if(a.type==="menu"){state.menuSeg="items";navigate("menu");}else if(a.type==="orders")navigate("orders");}
+// ===== Bottom sheet + breakdown ต้นทุนวันนี้ =====
+function closeSheet(){const o=document.getElementById("sheetOverlay");if(o)o.remove();}
+function openSheet(title,inner){
+  closeSheet();
+  const ov=document.createElement("div");ov.id="sheetOverlay";
+  ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center";
+  ov.innerHTML=`<div id="sheetCard" style="background:var(--card,#fff);width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 18px 28px;box-shadow:0 -8px 30px rgba(0,0,0,.2)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="font-weight:800;font-size:17px">${title}</div><button id="sheetClose" class="iconbtn">✕</button></div><div id="sheetBody">${inner}</div></div>`;
+  ov.onclick=e=>{if(e.target===ov)closeSheet();};
+  document.body.appendChild(ov);
+  document.getElementById("sheetClose").onclick=closeSheet;
+}
+async function openCostSheet(){
+  openSheet("รายละเอียดต้นทุนวันนี้",`<div class="empty">กำลังโหลด…</div>`);
+  try{
+    const sid=state.data.store.id,today=bkkDate(new Date());
+    const start=new Date(today+"T00:00:00+07:00").toISOString(),end=new Date(today+"T23:59:59.999+07:00").toISOString();
+    const selA=`orders?select=id,ordered_at,net_total,order_items(menu_item_id,quantity,food_cost_snapshot,cost_snapshot,pkg_cost_snapshot,order_item_addons(addon_id,quantity,food_cost_snapshot)),order_packaging(inventory_item_id,kind,qty,line_cost_snapshot)&store_id=eq.${sid}&status=eq.completed&ordered_at=gte.${start}&ordered_at=lte.${end}`;
+    const selB=`orders?select=id,ordered_at,net_total,order_items(menu_item_id,quantity,food_cost_snapshot,cost_snapshot,order_item_addons(addon_id,quantity,food_cost_snapshot))&store_id=eq.${sid}&status=eq.completed&ordered_at=gte.${start}&ordered_at=lte.${end}`;
+    let orders;try{orders=await rest(state.s,selA);}catch(e){orders=await rest(state.s,selB);}
+    const im=ingMap(),food={},pkg={},con={};let sales=0;
+    const add=(map,id,q,c)=>{const it=im[id],e=map[id]||(map[id]={name:it?it.name:"?",unit:it?it.base_unit:"",qty:0,cost:0});e.qty+=q;e.cost+=c;};
+    for(const o of orders){sales+=Number(o.net_total)||0;const sm=monthOf(new Date(o.ordered_at));
+      for(const it of o.order_items||[]){const q=Number(it.quantity)||0;
+        for(const r of recipeRowsFor(it.menu_item_id)){if(invKindOf(r.item_id)!=="food")continue;const u=Number(r.qty)*q;add(food,r.item_id,u,u*ingCostPerUnit(r.item_id,sm));}
+        for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;if(!ad.addon_id)continue;for(const r of recipeRowsForAddon(ad.addon_id)){if(invKindOf(r.item_id)!=="food")continue;const u=Number(r.qty)*aq;add(food,r.item_id,u,u*ingCostPerUnit(r.item_id,sm));}}
+      }
+      for(const p of o.order_packaging||[]){add(p.kind==="packaging"?pkg:con,p.inventory_item_id,Number(p.qty)||0,Number(p.line_cost_snapshot)||0);}
+    }
+    const sortV=o=>Object.values(o).sort((a,b)=>b.cost-a.cost);
+    const fA=sortV(food),pA=sortV(pkg),cA=sortV(con);
+    const fT=fA.reduce((s,x)=>s+x.cost,0),pT=pA.reduce((s,x)=>s+x.cost,0),cT=cA.reduce((s,x)=>s+x.cost,0),cogs=fT+pT+cT,gp=sales-cogs;
+    const sec=(title,color,arr)=>`<div class="sectitle" style="margin:10px 0 0">${title}</div><div class="block">${arr.length?arr.map(x=>`<div class="row" style="margin-bottom:7px"><span><span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:${color};margin-right:7px"></span>${esc(x.name)} <span class="cmeta">×${fmt2(x.qty)} ${esc(x.unit||"")}</span></span><b class="tnum">${fmtTHB(x.cost)}</b></div>`).join(""):`<div class="cmeta">— ไม่มีในวันนี้ —</div>`}</div>`;
+    const body=`
+      ${sec("🍳 Food Cost — วัตถุดิบที่ใช้",KIND_COLOR.food,fA)}
+      ${sec("📦 Packaging — บรรจุภัณฑ์",KIND_COLOR.packaging,pA)}
+      ${sec("🥢 Consumable — วัสดุสิ้นเปลือง",KIND_COLOR.supply,cA)}
+      <div class="sectitle" style="margin:10px 0 0">สรุปรวมวันนี้</div>
+      <div class="block"><div class="costsum">
+        <div class="row"><span>Food Cost รวม</span><b class="tnum">${fmtTHB(fT)}</b></div>
+        <div class="row" style="margin-top:4px"><span>Packaging รวม</span><b class="tnum">${fmtTHB(pT)}</b></div>
+        <div class="row" style="margin-top:4px"><span>Consumable รวม</span><b class="tnum">${fmtTHB(cT)}</b></div>
+        <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cogs)}</b></div>
+        <div class="row" style="margin-top:4px"><span>ยอดขายวันนี้</span><b class="tnum">${fmtTHB(sales)}</b></div>
+        <div class="row" style="margin-top:4px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(gp)}</b></div>
+      </div></div>
+      <div class="cmeta" style="margin-top:8px;line-height:1.6">Food = ปริมาณวัตถุดิบจากสูตร × ต้นทุนเฉลี่ยเดือนที่ขาย · Packaging/Consumable = snapshot จริงจากออเดอร์ (order_packaging)</div>`;
+    const el=document.getElementById("sheetBody");if(el)el.innerHTML=body;
+  }catch(e){const el=document.getElementById("sheetBody");if(el)el.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
 // ===== Reports (Phase 0 ก้าว 3) — อ่านจาก DB views =====
 function reportRange(preset){
   const today=bkkDate(new Date());
@@ -535,6 +584,7 @@ function renderDash(){
       <div class="kpi3">${kpi("ออเดอร์",f.today.count,"")}${kpi("เฉลี่ย/บิล",fmtTHB(f.avgBill),"")}${kpi("กำไรขั้นต้น",fmtTHB(f.gpToday),"ยอด − COGS")}</div>
       <div class="kpi3">${kpi("Food Cost",fmtTHB(f.foodToday),"FC "+f.fcToday+"%")}${kpi("Packaging",fmtTHB(f.pkgToday),"บรรจุภัณฑ์")}${kpi("Consumable",fmtTHB(f.conToday),"วัสดุสิ้นเปลือง")}</div>
       <div class="cmeta" style="margin-top:8px;text-align:center">COGS วันนี้ ${fmtTHB(f.cogsToday)} · กำไรขั้นต้น <b style="color:${BRAND.up}">${fmtTHB(f.gpToday)}</b></div>
+      <button class="ghostbtn" id="costDetail" style="margin-top:10px">🔍 ดูรายละเอียดต้นทุนวันนี้</button>
       <div class="grid">
         ${stat("เมนูขายดี",f.topMenu?f.topMenu.name:"—",f.topMenu?`${f.topMenu.qty} จาน/14วัน`:"",BRAND.up)}
         ${stat("เมนูยอดตก",f.falling?f.falling.name:"ไม่มี",f.falling?`${f.falling.prev}→${f.falling.last} จาน`:"ทุกเมนูยังนิ่ง",BRAND.down)}
@@ -587,6 +637,7 @@ function renderDash(){
       </div></div>`);
   wireNav();
   document.getElementById("refresh").onclick=async()=>{try{await reloadData();renderDash();toast("อัปเดตแล้ว");}catch(e){e.code===401?doLogout("เซสชันหมดอายุ"):toast(e.message);}};
+  document.getElementById("costDetail").onclick=openCostSheet;
   document.getElementById("settings").onclick=renderSettings;
   document.querySelectorAll("[data-loyal-cid]").forEach(b=>b.onclick=()=>{const c=state.data.customers.find(x=>x.id===b.dataset.loyalCid);if(c)renderCustomerDetail(c);});
   document.querySelectorAll("[data-ai]").forEach(b=>b.onclick=()=>handleAction(state.aiActions[+b.dataset.ai].action));
