@@ -259,7 +259,8 @@ async function loadMaster(s,storeId){
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
   const cats=await safeRest(s,`categories?select=id,name,sort_order,color,is_active&store_id=eq.${storeId}&order=sort_order.asc`);
   const pkgDefaults=await safeRest(s,`packaging_defaults?select=id,source,inventory_item_id,menu_item_id,qty,toggle_key,active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults};
+  const channelPrices=await safeRest(s,`channel_prices?select=id,source,menu_item_id,addon_id,price,active&store_id=eq.${storeId}`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -267,7 +268,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -335,6 +336,11 @@ const recipeRowsForAddon=addonId=>state.data.recipes.filter(r=>r.addon_id===addo
 const invKindOf=itemId=>{const it=ingMap()[itemId];return it?(it.kind||"food"):"food";};
 function splitCostRows(rows,mkey){let food=0;for(const r of rows){if(invKindOf(r.item_id)!=="food")continue;food+=Number(r.qty)*ingCostPerUnit(r.item_id,mkey);}return {food,pkg:0,total:food};}
 function menuCostSplit(menuId,mkey){const rows=recipeRowsFor(menuId).map(r=>({item_id:r.item_id,qty:Number(r.qty)}));if(rows.length)return splitCostRows(rows,mkey);const mm=menuMap()[menuId];const c=(mm&&mm.cost!=null&&mm.cost!=="")?Number(mm.cost):0;return {food:c,pkg:0,total:c};}
+// ===== Channel price resolver (20a) — ไม่มีราคาช่องทาง → ใช้ Base Price =====
+function channelPriceRow(kind,id,source){const cp=state.data.channelPrices||[];return cp.find(p=>p.active!==false&&p.source===source&&(kind==="menu"?p.menu_item_id===id:p.addon_id===id));}
+function priceFor(menu,source){if(!menu)return 0;const r=channelPriceRow("menu",menu.id,source);return r?Number(r.price):Number(menu.price);}
+function addonPriceFor(addon,source){if(!addon)return 0;const r=channelPriceRow("addon",addon.id,source);return r?Number(r.price):Number(addon.price);}
+function hasChannelPrice(kind,id,source){return !!channelPriceRow(kind,id,source);}
 function addonCostSplit(addonId,mkey){return splitCostRows(recipeRowsForAddon(addonId).map(r=>({item_id:r.item_id,qty:Number(r.qty)})),mkey);}
 const r2=n=>Math.round((n||0)*100)/100;
 function costOfRows(rows,mkey){return splitCostRows(rows,mkey).total;}
