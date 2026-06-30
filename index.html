@@ -437,18 +437,23 @@ async function renderReports(preset){
   if(preset){r.preset=preset;if(preset!=="custom"){const rr=reportRange(preset);r.from=rr.from;r.to=rr.to;}}
   if(!r.from){const rr=reportRange("month");r.from=rr.from;r.to=rr.to;}
   state.reportRange=r;
+  const tab=state.reportTab||"sales";
   const presets=[["today","วันนี้"],["7d","7 วัน"],["month","เดือนนี้"],["custom","กำหนดเอง"]];
   const chips=presets.map(([k,l])=>`<button class="chip ${r.preset===k?"active":""}" data-rp="${k}">${l}</button>`).join("");
   const customBar=r.preset==="custom"?`<div class="block" style="display:flex;gap:8px;align-items:center"><input type="date" id="rFrom" class="nin" style="margin-top:0" value="${esc(r.from)}"><span>ถึง</span><input type="date" id="rTo" class="nin" style="margin-top:0" value="${esc(r.to)}"><button class="chip active" id="rGo">ดู</button></div>`:"";
+  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย";
   app.innerHTML=shell("reports",`<div class="phead"><div class="ptitle">รายงาน</div><button class="iconbtn" id="toDash">‹</button></div>
+    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button></div>
     <div class="block"><div class="chips" id="rpChips">${chips}</div></div>
     ${customBar}
-    <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ข้อมูลจากระบบบัญชีต้นทุน (snapshot)</div>
+    <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ${note}</div>
     <div id="repBody"><div class="empty">กำลังโหลด…</div></div>`);
   wireNav();
   document.getElementById("toDash").onclick=()=>navigate("dash");
+  document.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{state.reportTab=b.dataset.rt;renderReports();});
   document.querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>renderReports(b.dataset.rp));
   if(r.preset==="custom"){document.getElementById("rGo").onclick=()=>{const f=val("rFrom"),t=val("rTo");if(f&&t){state.reportRange={preset:"custom",from:f,to:t};renderReports();}};}
+  if(tab==="crm"){fillCRMReport(r);return;}
   try{
     const {sales,cogs}=await fetchReport(r.from,r.to);
     const totSales=sales.reduce((a,x)=>a+Number(x.sales||0),0),totOrders=sales.reduce((a,x)=>a+Number(x.orders_count||0),0);
@@ -477,6 +482,39 @@ async function renderReports(preset){
       ${days.length?`<div class="sec"><div class="sectitle">รายวัน</div><div class="block">${days.map(d=>`<div class="row" style="margin-bottom:6px"><span class="cmeta">${d}</span><b class="tnum">${fmtTHB(byDay[d])}</b></div>`).join("")}</div></div>`:`<div class="empty">ยังไม่มียอดขายในช่วงนี้</div>`}
       <div style="height:20px"></div>`;
   }catch(e){document.getElementById("repBody").innerHTML=`<div class="empty">โหลดรายงานไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
+function fillCRMReport(r){
+  const body=document.getElementById("repBody");if(!body)return;
+  const cell=(l,v,sub)=>`<div class="anum"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:17px">${v}</div>${sub?`<div class="anumlabel" style="margin-top:2px">${sub}</div>`:""}</div>`;
+  const custs=(state.data.customers||[]).filter(c=>!c.is_guest);
+  const fromT=new Date(r.from+"T00:00:00+07:00").getTime(),toT=new Date(r.to+"T23:59:59+07:00").getTime();
+  const agg={};
+  for(const c of custs){const src=c.acquisition_source||"__none";const a=agg[src]||(agg[src]={count:0,newInRange:0,repeat:0,spend:0,orders:0});
+    a.count++;a.spend+=Number(c.total_spent)||0;a.orders+=Number(c.total_orders)||0;
+    if((Number(c.total_orders)||0)>=2)a.repeat++;
+    const ct=c.created_at?new Date(c.created_at).getTime():0;if(ct>=fromT&&ct<=toT)a.newInRange++;}
+  const total=custs.length;
+  const rows=Object.entries(agg).map(([src,a])=>({src,...a,avg:a.count?a.spend/a.count:0,repeatPct:a.count?Math.round(a.repeat/a.count*100):0,pct:total?Math.round(a.count/total*100):0})).sort((x,y)=>y.count-x.count);
+  const newTotal=rows.reduce((s,x)=>s+x.newInRange,0),spendTotal=rows.reduce((s,x)=>s+x.spend,0),maxCount=Math.max(1,...rows.map(x=>x.count));
+  const labeled=src=>src==="__none"?"ไม่ระบุแหล่งที่มา":(acqLabel(src)||src);
+  const withData=rows.filter(x=>x.src!=="__none"&&x.count>0);
+  const bestAvg=[...withData].sort((a,b)=>b.avg-a.avg)[0],bestRepeat=[...withData].sort((a,b)=>b.repeatPct-a.repeatPct)[0];
+  body.innerHTML=`
+    <div class="sec"><div class="grid">
+      ${cell("ลูกค้าทั้งหมด",total+" คน")}
+      ${cell("ลูกค้าใหม่ในช่วง",newTotal+" คน","ตาม created_at")}
+      ${cell("จำนวนช่องทาง",rows.filter(x=>x.src!=="__none").length+" ช่อง")}
+      ${cell("ยอดซื้อรวมสะสม",fmtTHB(spendTotal))}
+    </div></div>
+    <div class="sec"><div class="sectitle">ลูกค้าตามช่องทาง (Customer Source)</div><div class="block">
+      ${rows.length?rows.map(x=>`<div style="margin-bottom:13px"><div class="row"><span>${labeled(x.src)}</span><b class="tnum">${x.count} คน · ${x.pct}%</b></div><div style="height:7px;border-radius:99px;background:#eee;margin-top:4px;overflow:hidden"><div style="height:100%;width:${Math.round(x.count/maxCount*100)}%;background:${x.src==="__none"?"#bbb":BRAND.orange}"></div></div><div class="cmeta" style="margin-top:4px">ใหม่ในช่วง ${x.newInRange} · ซื้อซ้ำ ${x.repeat} (${x.repeatPct}%) · ยอดสะสม ${fmtTHB(x.spend)} · เฉลี่ย/คน ${fmtTHB(x.avg)}</div></div>`).join(""):`<div class="cmeta">ยังไม่มีข้อมูลแหล่งที่มา — ไปตั้งในหน้าแก้ไขลูกค้า</div>`}
+    </div></div>
+    ${withData.length?`<div class="sec"><div class="sectitle">⭐ ช่องทางคุณภาพดี</div><div class="block"><div class="costsum">
+      <div class="row"><span>💰 เฉลี่ยยอดซื้อ/คน สูงสุด</span><b>${labeled(bestAvg.src)} · ${fmtTHB(bestAvg.avg)}</b></div>
+      <div class="row" style="margin-top:6px"><span>🔁 % ซื้อซ้ำ สูงสุด</span><b>${labeled(bestRepeat.src)} · ${bestRepeat.repeatPct}%</b></div>
+      <div class="cmeta" style="margin-top:8px">ยอดซื้อ/ซื้อซ้ำ = ค่าสะสมตลอดอายุลูกค้า (lifetime) · ลูกค้าใหม่ = นับตามวันที่เพิ่มเข้าระบบในช่วงที่เลือก</div>
+    </div></div></div>`:""}
+    <div style="height:20px"></div>`;
 }
 
 function renderDash(){
