@@ -657,7 +657,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
+const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -985,6 +985,7 @@ function renderMenuEdit(m){
     </div>
     <div class="blocktitle">สูตรอาหาร (Food Cost) — เฉพาะวัตถุดิบอาหารต่อ 1 จาน</div>
     <div class="block"><div class="cmeta" style="margin-bottom:8px">📦 บรรจุภัณฑ/ช้อน/ถุง คิดที่ระดับออเดอร์ (เลือกตอนสั่ง) ไม่ใส่ในสูตร</div><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบอาหาร</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
+    ${channelPriceBlock("menu",m?m.id:null)}
     <div style="height:90px"></div>
     ${reasonBlock("rsnMenu")}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มเมนู":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="copy">📄 คัดลอกเมนูนี้</button><button class="delbtn" id="del">ลบเมนูนี้</button>`:""}</div></div>`;
@@ -999,6 +1000,18 @@ function renderMenuEdit(m){
   renderRecipeRows();
 }
 const KIND_TH={food:"อาหาร",packaging:"บรรจุภัณฑ์",supply:"วัสดุสิ้นเปลือง"};
+const PRICE_CH=[["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];
+function channelPriceBlock(kind,id){
+  const cp=state.data.channelPrices||[];
+  const rows=PRICE_CH.map(([k,l])=>{const r=id?cp.find(p=>p.source===k&&(kind==="menu"?p.menu_item_id===id:p.addon_id===id)):null;const v=(r&&r.price!=null)?Number(r.price):"";return `<div class="row" style="margin-top:8px;align-items:center"><span style="width:96px;font-size:14px">${l}</span><input class="nin" style="margin-top:0;flex:1" id="cp_${k}" inputmode="decimal" placeholder="ใช้ราคาหลัก" value="${v}"/></div>`;}).join("");
+  return `<div class="blocktitle">ราคาตามช่องทาง (เว้นว่าง = ใช้ราคาหลัก)</div><div class="block">${rows}<div class="cmeta" style="margin-top:10px">กรอกเฉพาะช่องทางที่ขายคนละราคา เช่น Grab/LINE MAN บวกค่า GP — เว้นว่างจะใช้ราคาหลักด้านบน</div></div>`;
+}
+async function saveChannelPrices(kind,targetId){
+  const col=kind==="menu"?"menu_item_id":"addon_id";
+  await del(state.s,`channel_prices?${col}=eq.${targetId}`);
+  const rows=[];for(const[k]of PRICE_CH){const raw=(val("cp_"+k)||"").trim();if(raw==="")continue;const n=parseFloat(raw);if(!isNaN(n)&&n>0)rows.push({store_id:state.data.store.id,source:k,[col]:targetId,price:n});}
+  if(rows.length)await post(state.s,"channel_prices",rows,"return=minimal");
+}
 const KIND_COLOR={food:"#0E9F6E",packaging:"#2563EB",supply:"#7C3AED"};
 function renderRecipeRows(){
   const im=ingMap(),cur=monthOf(new Date()),box=document.getElementById("recipeRows");
@@ -1039,6 +1052,7 @@ async function saveMenuItem(active){
       else{const r=await post(state.s,"menu_items",{store_id:state.data.store.id,name,name_en,product_type,price,cost,category,is_active:active,sort_order:state.data.menu.length+1},"return=representation");menuId=r[0].id;}
       await del(state.s,`recipe_items?menu_item_id=eq.${menuId}`);
       if(rows.length)await post(state.s,"recipe_items",rows.map(r=>({store_id:state.data.store.id,menu_item_id:menuId,inventory_item_id:r.item_id,qty:r.qty})),"return=minimal");
+      await saveChannelPrices("menu",menuId);
     });
     await reloadData();renderMenu();toast("บันทึกเมนูแล้ว");
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
@@ -1066,6 +1080,7 @@ function renderAddonEdit(a){
     <div class="block"><div class="chips" id="catChips">${cats.length?cats.map(c=>`<button class="chip sm ${lc.has(c)?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join(""):`<span class="cmeta">ยังไม่มีหมวดหมู่ — ตั้งหมวดให้เมนูก่อน</span>`}</div></div>
     <div class="blocktitle">หรือใช้กับเมนูเฉพาะ</div>
     <div class="block"><div class="chips" id="menuChips">${state.data.menu.map(m=>`<button class="chip sm ${lm.has(m.id)?"active":""}" data-menu="${m.id}">${esc(m.name)}</button>`).join("")}</div></div>
+    ${channelPriceBlock("addon",a?a.id:null)}
     <div style="height:80px"></div>
     ${reasonBlock("rsnAddon")}
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่ม Add-on":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบ Add-on นี้</button>`:""}</div></div>`;
@@ -1095,6 +1110,7 @@ async function saveAddon(active){
       if(links.length)await post(state.s,"addon_links",links,"return=minimal");
       await del(state.s,`recipe_items?addon_id=eq.${addonId}`);
       if(rows.length)await post(state.s,"recipe_items",rows.map(r=>({store_id:sid,addon_id:addonId,inventory_item_id:r.item_id,qty:r.qty})),"return=minimal");
+      await saveChannelPrices("addon",addonId);
     });
     await reloadData();renderMenu();toast("บันทึก Add-on แล้ว");
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
