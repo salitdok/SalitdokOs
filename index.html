@@ -597,6 +597,12 @@ function fillCRMReport(r){
     <div style="height:20px"></div>`;
 }
 
+function lowStockCard(){
+  const low=(state.data.stock||[]).filter(s=>s.low_stock);
+  if(!low.length)return "";
+  const im=ingMap();
+  return `<div class="sec"><div class="sectitle">⚠️ ของใกล้หมด / ต้องสั่งซื้อ (${low.length})</div><div class="block">${low.slice(0,8).map(s=>{const it=im[s.inventory_item_id],k=it?(it.kind||"food"):"food",neg=Number(s.on_hand)<0;return `<button class="mmrow" data-lowstock="${s.inventory_item_id}" style="width:100%;text-align:left"><span style="width:8px;height:8px;border-radius:99px;background:#c0392b;flex:none"></span><div class="mmmain"><div class="mmname">${esc(s.name||(it?it.name:"?"))} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ติดลบ</span>`:""}</div><div class="mmsub">คงเหลือ ${fmt2(s.on_hand)} ${esc(s.base_unit||"")}${s.reorder_level!=null?` · จุดสั่งซื้อ ${fmt2(s.reorder_level)}`:""}</div></div><span class="chev">›</span></button>`;}).join("")}${low.length>8?`<div class="cmeta" style="margin-top:8px">และอีก ${low.length-8} รายการ — ดูทั้งหมดที่แท็บเมนู → ต้นทุน/สต็อก</div>`:""}</div></div>`;
+}
 function renderDash(){
   const f=computeFacts(state.data),d=state.data,L=loyaltySummary();state.aiActions=f.insights;
   const mx=Math.max(1,...f.spark.map(x=>x.sales));
@@ -622,6 +628,7 @@ function renderDash(){
         ${stat("ลูกค้าประจำ/หาย",f.returningToday+" / "+f.lapsedCount,"กลับวันนี้ / หาย ≥7วัน",BRAND.amber)}
       </div>
     </div>
+    ${lowStockCard()}
     <div class="sec"><div class="sectitle">🎯 AI แนะนำให้ทำ</div>${f.insights.map((ins,i)=>aiCard(ins,i)).join("")}</div>
     <div class="sec" id="analysis"><div class="sectitle">📈 วิเคราะห์ธุรกิจ</div>
       <div class="grid">
@@ -668,6 +675,7 @@ function renderDash(){
   wireNav();
   document.getElementById("refresh").onclick=async()=>{try{await reloadData();renderDash();toast("อัปเดตแล้ว");}catch(e){e.code===401?doLogout("เซสชันหมดอายุ"):toast(e.message);}};
   document.getElementById("costDetail").onclick=openCostSheet;
+  document.querySelectorAll("[data-lowstock]").forEach(b=>b.onclick=()=>{const it=state.data.inv.find(i=>i.id===b.dataset.lowstock);state.menuSeg="ingredients";it?renderIngredientEdit(it):navigate("menu");});
   document.getElementById("settings").onclick=renderSettings;
   document.querySelectorAll("[data-loyal-cid]").forEach(b=>b.onclick=()=>{const c=state.data.customers.find(x=>x.id===b.dataset.loyalCid);if(c)renderCustomerDetail(c);});
   document.querySelectorAll("[data-ai]").forEach(b=>b.onclick=()=>handleAction(state.aiActions[+b.dataset.ai].action));
@@ -1164,6 +1172,10 @@ function renderIngredientEdit(ing){
       <div class="chips" id="unitChips" style="margin-top:6px">${UNITS.map(u=>`<button class="chip sm ${u===baseUnit?"active":""}" data-unit="${u}">${u}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">จุดสั่งซื้อ — แจ้งเตือนเมื่อคงเหลือ ≤ ค่านี้ (เว้นว่าง = ไม่เตือน)</div>
       <input id="igReorder" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="เช่น 20" value="${ing&&ing.reorder_level!=null?ing.reorder_level:""}"/></div>
+    ${ing?(()=>{const st=stockMap()[ing.id],oh=st?Number(st.on_hand):0,neg=oh<0,low=st&&st.low_stock;return `<div class="blocktitle">สต็อกปัจจุบัน</div>
+    <div class="block"><div class="row"><span>คงเหลือ</span><b class="tnum" style="color:${neg?"#c0392b":low?"#d9822b":"inherit"}">${fmt2(oh)} ${esc(ing.base_unit)}${st?` · มูลค่า ฿${fmt2(st.stock_value)}`:""}</b></div>
+      <button class="ghostbtn" id="btnCount" style="margin-top:10px">📊 นับสต็อก / ปรับยอดให้ตรงจริง</button>
+      <button class="ghostbtn" id="btnWaste" style="margin-top:8px">🗑️ บันทึกของเสีย / ทิ้ง</button></div>`;})():""}
     ${ing?`<div class="block"><div class="costsum">ต้นทุนเฉลี่ยเดือนนี้ ≈ <b>${avg>0?"฿"+fmt2(avg)+"/"+esc(ing.base_unit):"ยังไม่มีข้อมูลซื้อ"}</b></div></div>
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
@@ -1177,7 +1189,28 @@ function renderIngredientEdit(ing){
   document.querySelectorAll("#unitChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#unitChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
   document.getElementById("save").onclick=saveIngredient;
   if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id))});}
-  if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));}
+  if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));
+    const bc=document.getElementById("btnCount");if(bc)bc.onclick=()=>adjustStockSheet(ing,"count");
+    const bw=document.getElementById("btnWaste");if(bw)bw.onclick=()=>adjustStockSheet(ing,"waste");}
+}
+function adjustStockSheet(ing,mode){
+  const st=stockMap()[ing.id],cur=st?Number(st.on_hand):0,isWaste=mode==="waste";
+  openSheet(isWaste?"บันทึกของเสีย":"นับสต็อก / ปรับยอด",`
+    <div class="block"><div class="row"><span>คงเหลือปัจจุบัน</span><b class="tnum">${fmt2(cur)} ${esc(ing.base_unit)}</b></div></div>
+    <div class="fhint" style="margin-top:10px">${isWaste?`จำนวนที่เสีย/ทิ้ง (${esc(ing.base_unit)})`:`ยอดที่นับได้จริง (${esc(ing.base_unit)})`}</div>
+    <input id="adjQty" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="${isWaste?"เช่น 5":fmt2(cur)}"/>
+    <input id="adjNote" class="nin" placeholder="หมายเหตุ (ถ้ามี)"/>
+    <div class="cmeta" style="margin-top:8px">${isWaste?"บันทึกเป็นการตัดสต็อกออก (ของเสีย)":"ระบบจะปรับยอดให้เท่ากับที่นับได้ โดยบันทึกส่วนต่างเป็นการปรับสต็อก — ใช้ตั้งยอดตั้งต้น/แก้ติดลบได้"}</div>
+    <button class="savebtn" id="adjGo" style="margin-top:14px">${isWaste?"บันทึกของเสีย":"ปรับยอด"}</button>`);
+  document.getElementById("adjGo").onclick=async()=>{
+    const v=parseFloat(val("adjQty"));if(isNaN(v)){toast("ใส่จำนวน");return;}
+    const note=val("adjNote").trim()||null;let delta,kind;
+    if(isWaste){if(v<=0){toast("จำนวนต้องมากกว่า 0");return;}delta=-Math.abs(v);kind="waste";}
+    else{delta=v-cur;kind="adjust";if(delta===0){toast("ยอดตรงอยู่แล้ว");return;}}
+    const btn=document.getElementById("adjGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{await post(state.s,"stock_movements",{store_id:state.data.store.id,inventory_item_id:ing.id,qty_delta:delta,kind,ref_type:"manual",occurred_at:new Date().toISOString(),note},"return=minimal");await reloadData();closeSheet();toast(isWaste?"บันทึกของเสียแล้ว":"ปรับยอดแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id)||ing);}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent=isWaste?"บันทึกของเสีย":"ปรับยอด";}
+  };
 }
 async function saveIngredient(){
   const name=val("igName").trim();if(!name){toast("ใส่ชื่อรายการ");return;}
