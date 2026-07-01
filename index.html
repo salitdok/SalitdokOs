@@ -184,9 +184,22 @@ const CONFIG={
 const CONFIG_READY=()=>/^https:\/\//.test(CONFIG.SUPABASE_URL)&&!CONFIG.SUPABASE_URL.includes("YOUR-")&&CONFIG.SUPABASE_ANON_KEY.length>20&&!CONFIG.SUPABASE_ANON_KEY.includes("YOUR-");
 const BRAND={ink:"#14182B",orange:"#F2691E",up:"#0E9F6E",down:"#E02424",amber:"#F59E0B",slate:"#5B6472"};
 const DAY=86400000, LS="salitdok_session";
-const SRC=[["manual","หน้าร้าน/กรอกเอง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"]];
-const SRC_MAP=Object.fromEntries(SRC);
-const SRC_COLOR={grab:"#00B14F",lineman:"#06C755",shopee:"#EE4D2D",manual:"#6B7280",other:"#6B7280"};
+const SRC_FALLBACK=[["manual","หน้าร้าน/กรอกเอง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"]];
+const SRC_COLOR_FALLBACK={grab:"#00B14F",lineman:"#06C755",shopee:"#EE4D2D",manual:"#6B7280",other:"#6B7280"};
+// Master Data: อ่านจาก sales_channels ถ้ามี ไม่งั้น fallback ค่าเดิม
+function chActive(){const cs=(state.data&&state.data.salesChannels)||[];return cs.filter(c=>c.active!==false).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));}
+function chAll(){const cs=(state.data&&state.data.salesChannels)||[];return cs.slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));}
+function chBySlug(slug){const cs=(state.data&&state.data.salesChannels)||[];return cs.find(c=>c.slug===slug)||null;}
+function chName(slug){const c=chBySlug(slug);if(c)return c.name;const f=SRC_FALLBACK.find(x=>x[0]===slug);return f?f[1]:(slug||"-");}
+function chColor(slug){const c=chBySlug(slug);if(c&&c.color)return c.color;return SRC_COLOR_FALLBACK[slug]||"#6B7280";}
+function chLogo(slug){const c=chBySlug(slug);return c&&c.logo?c.logo:"";}
+// SRC = [[slug,name],...] ช่องทางที่ active (ไว้วนสร้าง chips) — dynamic
+function srcList(){const a=chActive();return a.length?a.map(c=>[c.slug,c.name]):SRC_FALLBACK;}
+// pricing channels = ทุกช่องทาง active (รวม manual ให้ override ได้)
+function priceChannels(){const a=chActive();return a.length?a.map(c=>[c.slug,c.name]):[["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];}
+// backward-compat proxies (โค้ดเดิมอ้าง SRC/SRC_MAP/SRC_COLOR/PRICE_CH)
+const SRC_MAP=new Proxy({},{get:(_,k)=>chName(String(k))});
+const SRC_COLOR=new Proxy({},{get:(_,k)=>chColor(String(k))});
 const TYPES=[["food","อาหาร"],["drink","เครื่องดื่ม"],["addon","Add-on"],["set","ชุดเซ็ต"]];
 const UNITS=["g","ml","ฟอง","ชิ้น","portion"];
 const BULK={g:[["g",1],["kg",1000]],ml:[["ml",1],["ลิตร",1000]]};
@@ -271,7 +284,8 @@ async function loadMaster(s,storeId){
   const monthStart=bkkDate(new Date()).slice(0,7)+"-01";
   const plMonth=await safeRest(s,`v_pl_daily?select=revenue,total_app_cost,cogs,opex,net_profit&store_id=eq.${storeId}&day=gte.${monthStart}`);
   const settlements=await safeRest(s,`v_settlement_reconcile?select=*&store_id=eq.${storeId}&order=period_start.desc`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements};
+  const salesChannels=await safeRest(s,`sales_channels?select=id,slug,name,color,logo,default_fee_rate,default_fee_vat_rate,uses_settlement,uses_epayment,is_default,active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -279,7 +293,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -851,7 +865,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
+const ENTITY_TH={sales_channels:"ช่องทางการขาย",inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -880,17 +894,61 @@ async function renderAuditLog(filter){
 }
 const CASH_TYPE={cash:"เงินสด",bank:"ธนาคาร",ewallet:"e-Wallet"};
 const EXP_TYPE={fixed:"ประจำ",variable:"ผันแปร"};
-function feeForSource(src){const t=bkkDate(new Date());const rows=(state.data.feeSettings||[]).filter(f=>f.source===src&&f.active!==false&&String(f.effective_from)<=t);return rows.length?rows[0]:null;}
+function feeForSource(src){const t=bkkDate(new Date());const rows=(state.data.feeSettings||[]).filter(f=>f.source===src&&f.active!==false&&String(f.effective_from)<=t);if(rows.length)return rows[0];const c=chBySlug(src);if(c&&(Number(c.default_fee_rate)>0||Number(c.default_fee_vat_rate)>0))return {fee_rate:Number(c.default_fee_rate),fee_vat_rate:Number(c.default_fee_vat_rate),effective_from:null,_fromChannel:true};return null;}
 function acctBal(id){const r=(state.data.cashBalance||[]).find(x=>x.account_id===id);return r?Number(r.balance):null;}
 function catById(id){return (state.data.expenseCats||[]).find(c=>c.id===id);}
 function acctById(id){return (state.data.cashAccounts||[]).find(a=>a.id===id);}
+function renderChannels(){
+  const app=document.getElementById("app");
+  const list=chAll();
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ช่องทางการขาย</div></div>
+    <button class="savebtn" id="addCh" style="margin-bottom:14px">＋ เพิ่มช่องทาง</button>
+    <div class="block">${list.length?list.map(c=>`<div class="mmrow"><button class="mmmain" data-ch="${c.id}"><div class="mmname"><span style="display:inline-block;width:10px;height:10px;border-radius:99px;background:${c.color||"#6B7280"};margin-right:7px"></span>${c.logo?esc(c.logo)+" ":""}${esc(c.name)} ${c.active===false?`<span class="badge" style="font-size:10px;background:#c0392b22;color:#c0392b">ปิด</span>`:""}${c.is_default?` <span class="badge" style="font-size:10px;background:#2563EB22;color:#2563EB">ตั้งต้น</span>`:""}</div><div class="mmsub">${c.slug} · GP ${r2(Number(c.default_fee_rate)*100)}% · VAT ${r2(Number(c.default_fee_vat_rate)*100)}%${c.uses_settlement?" · settlement":""}${c.uses_epayment?" · e-payment":""}</div></button><span class="chev">›</span></div>`).join(""):`<div class="cmeta">ยังไม่มีช่องทาง</div>`}</div>
+    <div class="cmeta" style="margin-top:12px">💡 slug = รหัสภายในที่ระบบใช้ผูกข้อมูล (ห้ามซ้ำ/เปลี่ยนหลังมีออเดอร์แล้ว) · เปลี่ยนชื่อ/สี/โลโก้ได้เสมอ · GP/VAT ที่นี่เป็นค่าเริ่มต้น (fallback) ส่วนเรตมีผลตามวันที่ตั้งได้ที่ บัญชี/การเงิน</div>
+    <div style="height:24px"></div></div>`;
+  document.getElementById("back").onclick=renderSettings;
+  document.getElementById("addCh").onclick=()=>openChannelSheet();
+  document.querySelectorAll("[data-ch]").forEach(b=>b.onclick=()=>openChannelSheet(chAll().find(x=>x.id===b.dataset.ch)));
+}
+function openChannelSheet(ch){
+  const isNew=!ch;
+  openSheet(isNew?"เพิ่มช่องทาง":"แก้ไขช่องทาง",`
+    ${isNew?`<div class="fhint">slug (รหัสภายใน a–z, ห้ามเว้นวรรค)</div><input id="chSlug" class="nin" style="margin-top:6px" placeholder="เช่น robinhood, foodpanda" value=""/>`:`<div class="cmeta">slug: <b>${esc(ch.slug)}</b> (เปลี่ยนไม่ได้)</div>`}
+    <div class="fhint" style="margin-top:10px">ชื่อแสดง</div><input id="chName" class="nin" style="margin-top:6px" placeholder="เช่น Robinhood" value="${ch?esc(ch.name):""}"/>
+    <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">สี (hex)</div><input id="chColor" class="nin" style="margin-top:6px" placeholder="#00B14F" value="${ch&&ch.color?esc(ch.color):"#6B7280"}"/></div><div style="flex:1"><div class="fhint">โลโก้ (emoji)</div><input id="chLogo" class="nin" style="margin-top:6px" placeholder="🟢" value="${ch&&ch.logo?esc(ch.logo):""}"/></div></div>
+    <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">GP % เริ่มต้น</div><input id="chGp" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${ch?r2(Number(ch.default_fee_rate)*100):""}"/></div><div style="flex:1"><div class="fhint">VAT % เริ่มต้น</div><input id="chVat" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${ch?r2(Number(ch.default_fee_vat_rate)*100):""}"/></div></div>
+    <div class="fhint" style="margin-top:10px">ลำดับการแสดง</div><input id="chSort" class="nin" inputmode="numeric" style="margin-top:6px" placeholder="0" value="${ch?(ch.sort_order||0):""}"/>
+    <label style="display:flex;align-items:center;gap:10px;margin-top:12px"><input type="checkbox" id="chSettle" ${ch&&ch.uses_settlement?"checked":""}/> <span>มีรอบโอน/ตรวจ Settlement</span></label>
+    <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chEpay" ${ch&&ch.uses_epayment?"checked":""}/> <span>รับผ่าน e-payment</span></label>
+    <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chDefault" ${ch&&ch.is_default?"checked":""}/> <span>เป็นช่องทางตั้งต้น (เช่น หน้าร้าน)</span></label>
+    <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chActive" ${!ch||ch.active!==false?"checked":""}/> <span>เปิดใช้งาน (แสดงในหน้าออเดอร์)</span></label>
+    <button class="savebtn" id="chGo" style="margin-top:14px">${isNew?"เพิ่มช่องทาง":"บันทึก"}</button>
+    ${ch&&!ch.is_default?`<button class="ghostbtn" id="chDel" style="margin-top:8px;color:#c0392b">ลบช่องทาง</button>`:""}`);
+  document.getElementById("chGo").onclick=async()=>{
+    const name=val("chName").trim();if(!name){toast("ใส่ชื่อช่องทาง");return;}
+    let slug=ch?ch.slug:(val("chSlug")||"").trim().toLowerCase().replace(/[^a-z0-9_]/g,"");
+    if(isNew&&!slug){toast("ใส่ slug (a–z)");return;}
+    const body={name,color:(val("chColor").trim()||"#6B7280"),logo:val("chLogo").trim()||null,default_fee_rate:(parseFloat(val("chGp"))||0)/100,default_fee_vat_rate:(parseFloat(val("chVat"))||0)/100,sort_order:parseInt(val("chSort"))||0,uses_settlement:document.getElementById("chSettle").checked,uses_epayment:document.getElementById("chEpay").checked,is_default:document.getElementById("chDefault").checked,active:document.getElementById("chActive").checked};
+    const btn=document.getElementById("chGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{
+      if(isNew){await post(state.s,"sales_channels",{store_id:state.data.store.id,slug,...body},"return=minimal");}
+      else{await patch(state.s,`sales_channels?id=eq.${ch.id}`,body);}
+      await reloadData();closeSheet();toast("บันทึกแล้ว");renderChannels();
+    }catch(e){toast(/duplicate|unique/i.test(e.message)?"slug นี้มีอยู่แล้ว":e.message);btn.disabled=false;btn.textContent=isNew?"เพิ่มช่องทาง":"บันทึก";}
+  };
+  if(ch&&!ch.is_default){document.getElementById("chDel").onclick=async()=>{
+    openSheet("ลบช่องทาง",`<div class="cmeta" style="margin-bottom:12px">ลบ “${esc(ch.name)}” — ข้อมูลออเดอร์/รายงานเดิมที่ใช้ slug นี้ยังอยู่ แต่จะไม่มีชื่อ/สีให้แสดง แนะนำ “ปิดใช้งาน” แทนถ้าเคยมีออเดอร์แล้ว</div><button class="delbtn" id="chDelYes">ยืนยันลบ</button><button class="ghostbtn" id="chDelNo" style="margin-top:8px">ยกเลิก</button>`);
+    document.getElementById("chDelNo").onclick=()=>openChannelSheet(ch);
+    document.getElementById("chDelYes").onclick=async()=>{try{await del(state.s,`sales_channels?id=eq.${ch.id}`);await reloadData();closeSheet();toast("ลบแล้ว");renderChannels();}catch(e){toast(e.message);}};
+  };}
+}
 function renderFinance(){
   const app=document.getElementById("app");
   const cats=state.data.expenseCats||[],accts=state.data.cashAccounts||[],exps=state.data.expenses||[];
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">บัญชี / การเงิน</div></div>
     <button class="savebtn" id="addExp" style="margin-bottom:14px">＋ บันทึกค่าใช้จ่าย</button>
     <div class="blocktitle">ค่าธรรมเนียมแอป (GP / VAT) ต่อช่องทาง</div>
-    <div class="block">${SRC.map(([k,l])=>{const f=feeForSource(k);return `<div class="mmrow"><button class="mmmain" data-fee="${k}"><div class="mmname">${l}</div><div class="mmsub">${f?`GP ${r2(f.fee_rate*100)}% · VAT ${r2(f.fee_vat_rate*100)}%${f.effective_from?` · ตั้งแต่ ${f.effective_from}`:""}`:"ยังไม่ตั้งค่า — คิด 0%"}</div></button><span class="chev">›</span></div>`;}).join("")}<div class="cmeta" style="margin-top:8px">GP% จะถูก snapshot ตอนบันทึกออเดอร์ของช่องทางนั้น</div></div>
+    <div class="block">${srcList().map(([k,l])=>{const f=feeForSource(k);return `<div class="mmrow"><button class="mmmain" data-fee="${k}"><div class="mmname">${l}</div><div class="mmsub">${f?`GP ${r2(f.fee_rate*100)}% · VAT ${r2(f.fee_vat_rate*100)}%${f.effective_from?` · ตั้งแต่ ${f.effective_from}`:""}`:"ยังไม่ตั้งค่า — คิด 0%"}</div></button><span class="chev">›</span></div>`;}).join("")}<div class="cmeta" style="margin-top:8px">GP% จะถูก snapshot ตอนบันทึกออเดอร์ของช่องทางนั้น</div></div>
     <div class="blocktitle">บัญชีเงิน</div>
     <div class="block">${accts.length?accts.map(a=>{const b=acctBal(a.id);return `<div class="mmrow"><button class="mmmain" data-acc="${a.id}"><div class="mmname">${esc(a.name)} <span class="badge" style="font-size:10px;background:#2563EB22;color:#2563EB">${CASH_TYPE[a.type]||a.type}</span></div><div class="mmsub">คงเหลือ ${b!=null?fmtTHB(b):fmtTHB(a.opening_balance)}</div></button><span class="chev">›</span></div>`;}).join(""):`<div class="cmeta">ยังไม่มีบัญชี</div>`}<button class="ghostbtn" id="addAcc" style="margin-top:10px">＋ บัญชีเงิน</button></div>
     <div class="blocktitle">หมวดค่าใช้จ่าย</div>
@@ -923,7 +981,7 @@ function renderFinance(){
 function openAdSheet(ad){
   let src=ad?ad.source:"grab";const today=bkkDate(new Date());
   openSheet(ad?"แก้ไขค่าโฆษณา":"ค่าโฆษณาแอป",`
-    <div class="fhint">ช่องทาง</div><div class="chips" id="adSrc" style="margin-top:6px">${SRC.filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="fhint">ช่องทาง</div><div class="chips" id="adSrc" style="margin-top:6px">${srcList().filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
     <div class="fhint" style="margin-top:10px">แคมเปญ (ถ้ามี)</div><input id="adCamp" class="nin" style="margin-top:6px" placeholder="เช่น โปรส่งฟรี ก.ค." value="${ad&&ad.campaign?esc(ad.campaign):""}"/>
     <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">ตั้งแต่วันที่</div><input id="adFrom" type="date" class="nin" style="margin-top:6px" value="${ad?ad.period_start:today}"/></div><div style="flex:1"><div class="fhint">ถึงวันที่</div><input id="adTo" type="date" class="nin" style="margin-top:6px" value="${ad?ad.period_end:today}"/></div></div>
     <div class="fhint" style="margin-top:10px">ค่าโฆษณา (ก่อน VAT)</div><input id="adBv" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 500" value="${ad?ad.ad_cost_before_vat:""}"/>
@@ -1008,7 +1066,7 @@ async function openSettlementSheet(id){
   const gv=(k,d)=>st&&st[k]!=null?st[k]:(d!=null?d:"");
   openSheet(st?"แก้ไขสรุปยอดแอป":"บันทึกสรุปยอดแอป",`
     <div class="cmeta" style="margin-bottom:8px">กรอกยอดที่แอปสรุปมา (ราย period) เพื่อเทียบกับยอดในระบบ — ไม่เข้า P&L</div>
-    <div class="fhint">ช่องทาง</div><div class="chips" id="stSrc" style="margin-top:6px">${SRC.filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="fhint">ช่องทาง</div><div class="chips" id="stSrc" style="margin-top:6px">${srcList().filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
     <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">ตั้งแต่</div><input id="stFrom" type="date" class="nin" style="margin-top:6px" value="${gv("period_start",today)}"/></div><div style="flex:1"><div class="fhint">ถึง</div><input id="stTo" type="date" class="nin" style="margin-top:6px" value="${gv("period_end",today)}"/></div></div>
     <div class="fhint" style="margin-top:10px">ยอดขายจากแอป</div><input id="stG" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("gross_sales")}"/>
     <div class="fhint" style="margin-top:10px">ค่าคอมมิชชั่น/GP (รวม VAT)</div><input id="stC" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("commission_incl_vat")}"/>
@@ -1041,7 +1099,7 @@ async function openSettlementSheet(id){
   if(st){document.getElementById("stDel").onclick=async()=>{try{await del(state.s,`platform_settlements?id=eq.${st.id}`);await reloadData();closeSheet();toast("ลบแล้ว");renderFinance();}catch(e){toast(e.message);}};}
 }
 function openFeeSheet(src){
-  const f=feeForSource(src),l=(SRC.find(x=>x[0]===src)||[src,src])[1],today=bkkDate(new Date());
+  const f=feeForSource(src),l=(srcList().find(x=>x[0]===src)||[src,src])[1],today=bkkDate(new Date());
   openSheet("GP / VAT · "+l,`
     <div class="fhint">GP % (ค่าธรรมเนียมการขาย)</div><input id="fRate" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 30" value="${f?r2(f.fee_rate*100):""}"/>
     <div class="fhint" style="margin-top:10px">VAT % บน GP (ไม่มีใส่ 0)</div><input id="fVat" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 7" value="${f?r2(f.fee_vat_rate*100):""}"/>
@@ -1098,7 +1156,7 @@ function openExpenseSheet(exp){
     <div class="fhint">หมวด</div><div class="chips" id="eCat" style="margin-top:6px">${cats.map(c=>`<button class="chip sm ${c.id===cid?"active":""}" data-c="${c.id}">${esc(c.name)}</button>`).join("")}</div>
     <div class="fhint" style="margin-top:10px">จำนวนเงิน (บาท)</div><input id="eAmt" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 1500" value="${exp?exp.amount:""}"/>
     <div class="fhint" style="margin-top:10px">วันที่จ่าย</div><input id="eDate" type="date" class="nin" style="margin-top:6px" value="${exp?bkkDate(new Date(exp.paid_at)):today}"/>
-    <div class="fhint" style="margin-top:10px">ผูกช่องทาง (เช่นค่าแอด — ไม่บังคับ)</div><div class="chips" id="eSrc" style="margin-top:6px"><button class="chip sm ${src===""?"active":""}" data-s="">ไม่ระบุ</button>${SRC.map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="fhint" style="margin-top:10px">ผูกช่องทาง (เช่นค่าแอด — ไม่บังคับ)</div><div class="chips" id="eSrc" style="margin-top:6px"><button class="chip sm ${src===""?"active":""}" data-s="">ไม่ระบุ</button>${srcList().map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
     ${accts.length?`<div class="fhint" style="margin-top:10px">จ่ายจากบัญชี (ไม่บังคับ — ถ้าเลือกจะบันทึกเงินออกให้)</div><div class="chips" id="eAcc" style="margin-top:6px"><button class="chip sm ${aid===""?"active":""}" data-a="">ไม่ระบุ</button>${accts.map(a=>`<button class="chip sm ${aid===a.id?"active":""}" data-a="${a.id}">${esc(a.name)}</button>`).join("")}</div>`:""}
     <div class="fhint" style="margin-top:10px">หมายเหตุ</div><input id="eNote" class="nin" style="margin-top:6px" placeholder="(ถ้ามี)" value="${exp&&exp.note?esc(exp.note):""}"/>
     <button class="savebtn" id="eGo" style="margin-top:14px">${exp?"บันทึก":"บันทึกค่าใช้จ่าย"}</button>
@@ -1123,6 +1181,8 @@ function renderSettings(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ตั้งค่า</div></div>
     <div class="setrow"><div class="mmname">${esc(state.data.store.name)}</div><div class="mmsub">${esc(state.s.email)}</div></div>
     <div class="block"><div class="cmeta">ต้นทุน/กำไรคำนวณจากสูตรวัตถุดิบ × ราคาเฉลี่ยของเดือน (ตั้งในแท็บเมนู → วัตถุดิบ และในแต่ละเมนู → สูตรต้นทุน)</div></div>
+    <div class="blocktitle">ช่องทางการขาย</div>
+    <div class="block"><button class="ghostbtn" id="channels" style="margin-top:0">🧭 ช่องทางการขาย (Sales Channels)</button><div class="cmeta" style="margin-top:8px">เพิ่ม/แก้/ปิด ช่องทาง เช่น Grab/LINE MAN/Shopee/หน้าร้าน — ตั้งชื่อ สี โลโก้ GP% VAT% ได้เอง ทุกโมดูลอ้างอิงจากที่นี่</div></div>
     <div class="blocktitle">ต้นทุน</div>
     <div class="block"><button class="ghostbtn" id="pkgdef" style="margin-top:0">📦 ค่าเริ่มต้นบรรจุภัณฑ์ (ตามช่องทาง/เมนู)</button><div class="cmeta" style="margin-top:8px">ตั้งว่าแต่ละช่องทาง/เมนู ให้เติมกล่อง/ช้อน/ถุง อะไรอัตโนมัติตอนเปิดออเดอร์ — แก้เองได้เสมอก่อนบันทึก</div></div>
     <div class="blocktitle">การเงิน</div>
@@ -1136,6 +1196,7 @@ function renderSettings(){
   document.getElementById("audit").onclick=()=>renderAuditLog();
   document.getElementById("pkgdef").onclick=renderPackagingDefaults;
   document.getElementById("finance").onclick=renderFinance;
+  document.getElementById("channels").onclick=renderChannels;
   document.getElementById("clear").onclick=renderClearConfirm;
   document.getElementById("logout").onclick=()=>doLogout();
 }
@@ -1257,7 +1318,7 @@ async function renderOrderDetail(id){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายละเอียดออเดอร์</div></div>
     <div class="block"><div class="selbox"><div class="row"><b>${esc(o.customers?o.customers.name:"ไม่ระบุลูกค้า")}</b><div>${srcBadge(o.source)}</div></div><div class="cmeta" style="margin-top:4px">${time}${cancelled?" · <span style='color:#c0392b'>ยกเลิกแล้ว</span>":""}</div><div style="height:10px"></div>${lines}<div class="row" style="margin-top:8px;border-top:1px solid var(--line);padding-top:10px"><b>รวม</b><b class="tnum">${fmtTHB(o.net_total)}</b></div></div></div>
     <div class="blocktitle">ช่องทางการขาย (Order Source)</div>
-    <div class="block"><div class="cmeta" style="margin-bottom:8px">แก้ช่องทางของออเดอร์นี้ได้ — มีผลกับกราฟ “ช่องทางการขาย” ในหน้าหลักทันที</div><div class="chips" id="osrcChips">${SRC.map(([k,l])=>`<button class="chip ${k===o.source?"active":""}" data-osrc="${k}">${l}</button>`).join("")}</div></div>
+    <div class="block"><div class="cmeta" style="margin-bottom:8px">แก้ช่องทางของออเดอร์นี้ได้ — มีผลกับกราฟ “ช่องทางการขาย” ในหน้าหลักทันที</div><div class="chips" id="osrcChips">${srcList().map(([k,l])=>`<button class="chip ${k===o.source?"active":""}" data-osrc="${k}">${l}</button>`).join("")}</div></div>
     ${hasCost?`<div class="block"><div class="costsum"><div class="cmeta" style="margin-bottom:6px">ต้นทุน ณ วันที่ขาย (snapshot — ไม่เปลี่ยนตามราคาปัจจุบัน)</div><div class="row"><span>ต้นทุนอาหาร</span><b class="tnum">${fmtTHB(oFood)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์</span><b class="tnum">${fmtTHB(oPkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง</span><b class="tnum">${fmtTHB(oCon)}</b></div><div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(oCogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(oProfit)}</b></div></div></div>`:""}
     ${finSection}
     <div class="block"><button class="savebtn" id="edit" style="height:50px">แก้ไขออเดอร์</button>${cancelled?`<button class="ghostbtn" id="restore">↩︎ กู้คืนออเดอร์</button>`:`<button class="delbtn" id="cancelo" style="margin-top:10px">ลบออเดอร์ (เปลี่ยนเป็นยกเลิก)</button>`}</div></div>`;
@@ -1736,7 +1797,7 @@ function renderAdd(){
     <div class="blocktitle">เวลาออเดอร์</div>
     <div class="block"><input type="datetime-local" id="orderedAt" class="nin" style="margin-top:0" value="${esc(draft.orderedAt)}"><div class="cmeta" style="margin-top:6px">ปรับย้อนหลังได้ เช่น ใส่ออเดอร์ของวันที่ 1</div></div>
     <div class="blocktitle">ช่องทาง</div>
-    <div class="block"><div class="chips" id="srcChips">${SRC.map(([k,l])=>`<button class="chip ${k===draft.source?"active":""}" data-src="${k}">${l}</button>`).join("")}</div></div>
+    <div class="block"><div class="chips" id="srcChips">${srcList().map(([k,l])=>`<button class="chip ${k===draft.source?"active":""}" data-src="${k}">${l}</button>`).join("")}</div></div>
     <div class="blocktitle">📦 บรรจุภัณฑ์ / วัสดุสิ้นเปลือง</div>
     <div class="block"><div class="cmeta" style="margin-bottom:8px">เติมอัตโนมัติตามช่องทาง/เมนู — แก้จำนวน เปลี่ยนกล่อง เพิ่ม/ลบ ได้ก่อนบันทึก</div><div id="pkgList"></div><button class="ghostbtn" id="addPkg" style="margin-top:0">＋ เพิ่มบรรจุภัณฑ์/วัสดุ</button><div id="pkgPicker"></div></div>
     <div class="blocktitle">สรุปต้นทุน</div>
