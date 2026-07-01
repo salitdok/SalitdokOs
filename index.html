@@ -270,7 +270,8 @@ async function loadMaster(s,storeId){
   const recurring=await safeRest(s,`recurring_expenses?select=id,category_id,cash_account_id,name,amount,source,day_of_month,active&store_id=eq.${storeId}`);
   const monthStart=bkkDate(new Date()).slice(0,7)+"-01";
   const plMonth=await safeRest(s,`v_pl_daily?select=revenue,total_app_cost,cogs,opex,net_profit&store_id=eq.${storeId}&day=gte.${monthStart}`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth};
+  const settlements=await safeRest(s,`v_settlement_reconcile?select=*&store_id=eq.${storeId}&order=period_start.desc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -278,7 +279,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -850,7 +851,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
+const ENTITY_TH={inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -898,6 +899,8 @@ function renderFinance(){
     <div class="block">${(state.data.adCosts||[]).length?(state.data.adCosts||[]).slice(0,15).map(a=>`<div class="mmrow"><button class="mmmain" data-ad="${a.id}"><div class="mmname">${SRC_MAP[a.source]||a.source}${a.campaign?` · ${esc(a.campaign)}`:""} <b class="tnum" style="float:right">${fmtTHB(a.ad_cost_including_vat)}</b></div><div class="mmsub">${a.period_start}–${a.period_end} · ก่อน VAT ${fmtTHB(a.ad_cost_before_vat)} + VAT ${fmtTHB(a.ad_vat_amount)}</div></button></div>`).join(""):`<div class="cmeta">ยังไม่มีค่าโฆษณา — เพิ่มยอดที่แอปสรุปมา (ราย period/แคมเปญ)</div>`}<button class="ghostbtn" id="addAd" style="margin-top:10px">＋ ค่าโฆษณาแอป</button></div>
     <div class="blocktitle">ค่าใช้จ่ายประจำ (Template)</div>
     <div class="block">${(state.data.recurring||[]).length?(state.data.recurring||[]).map(rc=>{const c=catById(rc.category_id);return `<div class="mmrow"><button class="mmmain" data-rec="${rc.id}"><div class="mmname">${esc(rc.name)} <b class="tnum" style="float:right">${fmtTHB(rc.amount)}</b></div><div class="mmsub">${c?esc(c.name):"(ไม่ระบุหมวด)"}${rc.day_of_month?` · ทุกวันที่ ${rc.day_of_month}`:""}${rc.active===false?" · ปิดอยู่":""}</div></button></div>`;}).join(""):`<div class="cmeta">ยังไม่มี — เพิ่มเช่น ค่าเช่า/เงินเดือน/ค่าเน็ต ที่จ่ายทุกเดือน</div>`}<button class="ghostbtn" id="addRec" style="margin-top:10px">＋ ค่าใช้จ่ายประจำ</button>${(state.data.recurring||[]).some(x=>x.active!==false)?`<button class="ghostbtn" id="genRec" style="margin-top:8px">📥 ลงค่าใช้จ่ายประจำของเดือนนี้</button>`:""}</div>
+    <div class="blocktitle">🧾 สรุปยอดแอป (ตรวจยอดโอน)</div>
+    <div class="block">${(state.data.settlements||[]).length?(state.data.settlements||[]).slice(0,15).map(st=>{const diff=Number(st.payout_vs_system)||0,ok=Math.abs(diff)<1;return `<div class="mmrow"><button class="mmmain" data-settle="${st.id}"><div class="mmname">${SRC_MAP[st.source]||st.source} <span class="cmeta">${st.period_start}–${st.period_end}</span> <b class="tnum" style="float:right">${fmtTHB(st.app_net_payout)}</b></div><div class="mmsub">ในระบบ ${fmtTHB(st.sys_net_receivable)} · แอปโอน ${fmtTHB(st.app_net_payout)} · <span style="color:${ok?BRAND.up:"#c0392b"}">ต่าง ${diff>=0?"+":""}${fmtTHB(diff)}${ok?" ✓":""}</span></div></button></div>`;}).join(""):`<div class="cmeta">ยังไม่มี — กรอกยอดที่แอปสรุปมา (ราย period) เพื่อเทียบกับยอดในระบบ</div>`}<button class="ghostbtn" id="addSettle" style="margin-top:10px">＋ บันทึกสรุปยอดแอป</button></div>
     <div class="blocktitle">ค่าใช้จ่ายล่าสุด</div>
     <div class="block">${exps.length?exps.slice(0,20).map(e=>{const c=catById(e.category_id);return `<div class="mmrow"><button class="mmmain" data-exp="${e.id}"><div class="mmname">${c?esc(c.name):"(ไม่ระบุหมวด)"} <b class="tnum" style="float:right">${fmtTHB(e.amount)}</b></div><div class="mmsub">${bkkDate(new Date(e.paid_at))}${e.source?` · ${SRC_MAP[e.source]||e.source}`:""}${e.note?` · ${esc(e.note)}`:""}</div></button></div>`;}).join(""):`<div class="cmeta">ยังไม่มีค่าใช้จ่าย</div>`}</div>
     <div style="height:24px"></div></div>`;
@@ -914,6 +917,8 @@ function renderFinance(){
   {const b=document.getElementById("addRec");if(b)b.onclick=()=>openRecurringSheet();}
   document.querySelectorAll("[data-rec]").forEach(b=>b.onclick=()=>{const rc=(state.data.recurring||[]).find(x=>x.id===b.dataset.rec);if(rc)openRecurringSheet(rc);});
   {const b=document.getElementById("genRec");if(b)b.onclick=generateRecurringThisMonth;}
+  {const b=document.getElementById("addSettle");if(b)b.onclick=()=>openSettlementSheet();}
+  document.querySelectorAll("[data-settle]").forEach(b=>b.onclick=()=>openSettlementSheet(b.dataset.settle));
 }
 function openAdSheet(ad){
   let src=ad?ad.source:"grab";const today=bkkDate(new Date());
@@ -995,6 +1000,45 @@ async function generateRecurringThisMonth(){
       await reloadData();closeSheet();toast(`ลงแล้ว ${rows.length} รายการ${skip?` · ข้าม ${skip} (ลงแล้ว)`:""}`);renderFinance();
     }catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันลงค่าใช้จ่าย";}
   };
+}
+async function openSettlementSheet(id){
+  let st=null,rec=null;
+  if(id){rec=(state.data.settlements||[]).find(x=>x.id===id)||null;try{const rs=await safeRest(state.s,`platform_settlements?select=*&id=eq.${id}&limit=1`);st=rs&&rs[0];}catch(e){}}
+  let src=st?st.source:"grab";const today=bkkDate(new Date());
+  const gv=(k,d)=>st&&st[k]!=null?st[k]:(d!=null?d:"");
+  openSheet(st?"แก้ไขสรุปยอดแอป":"บันทึกสรุปยอดแอป",`
+    <div class="cmeta" style="margin-bottom:8px">กรอกยอดที่แอปสรุปมา (ราย period) เพื่อเทียบกับยอดในระบบ — ไม่เข้า P&L</div>
+    <div class="fhint">ช่องทาง</div><div class="chips" id="stSrc" style="margin-top:6px">${SRC.filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">ตั้งแต่</div><input id="stFrom" type="date" class="nin" style="margin-top:6px" value="${gv("period_start",today)}"/></div><div style="flex:1"><div class="fhint">ถึง</div><input id="stTo" type="date" class="nin" style="margin-top:6px" value="${gv("period_end",today)}"/></div></div>
+    <div class="fhint" style="margin-top:10px">ยอดขายจากแอป</div><input id="stG" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("gross_sales")}"/>
+    <div class="fhint" style="margin-top:10px">ค่าคอมมิชชั่น/GP (รวม VAT)</div><input id="stC" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("commission_incl_vat")}"/>
+    <div class="fhint" style="margin-top:10px">ค่าโปร/Marketing Fee (รวม VAT)</div><input id="stM" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("marketing_fee_incl_vat")}"/>
+    <div class="fhint" style="margin-top:10px">ค่าโฆษณา (รวม VAT — ถ้ารวมในรอบนี้)</div><input id="stA" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("ad_cost_incl_vat")}"/>
+    <div class="fhint" style="margin-top:10px">ปรับยอด/ชดเชย/Refund (สุทธิ ±)</div><input id="stAdj" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("adjustment_incl_vat")}"/>
+    <div class="fhint" style="margin-top:10px">รายได้สุทธิที่แอปแจ้งโอน (net payout)</div><input id="stN" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${gv("net_payout")}"/>
+    <input id="stNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ (ถ้ามี)" value="${st&&st.note?esc(st.note):""}"/>
+    <div class="block" style="margin-top:12px"><div class="costsum">
+      <div class="row"><span>ระบบคำนวณได้ (computed net)</span><b class="tnum" id="stCn">฿0</b></div>
+      <div class="row" style="margin-top:4px"><span>ต่างจากที่แอปแจ้ง (variance)</span><b class="tnum" id="stVr">฿0</b></div>
+      ${rec?`<div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>ยอดในระบบ (net receivable)</span><b class="tnum">${fmtTHB(rec.sys_net_receivable)}</b></div><div class="row" style="margin-top:4px"><span>แอปโอน − ระบบ</span><b class="tnum" id="stPvs">฿0</b></div>`:`<div class="cmeta" style="margin-top:6px">ยอดเทียบกับระบบจะแสดงหลังบันทึก</div>`}
+    </div></div>
+    <button class="savebtn" id="stGo" style="margin-top:14px">${st?"บันทึก":"บันทึกสรุปยอด"}</button>
+    ${st?`<button class="ghostbtn" id="stDel" style="margin-top:8px;color:#c0392b">ลบ</button>`:""}`);
+  document.querySelectorAll("#stSrc .chip").forEach(c=>c.onclick=()=>{src=c.dataset.s;document.querySelectorAll("#stSrc .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  const num=x=>parseFloat(val(x))||0;
+  const calc=()=>{const cn=num("stG")-num("stC")-num("stM")-num("stA")+num("stAdj"),vr=num("stN")-cn;
+    document.getElementById("stCn").textContent=fmtTHB(cn);
+    const vrEl=document.getElementById("stVr");vrEl.textContent=fmtTHB(vr);vrEl.style.color=Math.abs(vr)<1?BRAND.up:"#c0392b";
+    if(rec){const el=document.getElementById("stPvs");if(el){const p=num("stN")-(Number(rec.sys_net_receivable)||0);el.textContent=(p>=0?"+":"")+fmtTHB(p);el.style.color=Math.abs(p)<1?BRAND.up:"#c0392b";}}};
+  ["stG","stC","stM","stA","stAdj","stN"].forEach(x=>{const el=document.getElementById(x);if(el)el.oninput=calc;});calc();
+  document.getElementById("stGo").onclick=async()=>{
+    const pf=val("stFrom")||today,pt=val("stTo")||today;if(pt<pf){toast("ช่วงวันที่ไม่ถูกต้อง");return;}
+    const body={store_id:state.data.store.id,source:src,period_start:pf,period_end:pt,gross_sales:num("stG"),commission_incl_vat:num("stC"),marketing_fee_incl_vat:num("stM"),ad_cost_incl_vat:num("stA"),adjustment_incl_vat:num("stAdj"),net_payout:num("stN"),note:val("stNote").trim()||null};
+    const btn=document.getElementById("stGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{if(st)await patch(state.s,`platform_settlements?id=eq.${st.id}`,body);else await post(state.s,"platform_settlements",body,"return=minimal");await reloadData();closeSheet();toast("บันทึกแล้ว");renderFinance();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent=st?"บันทึก":"บันทึกสรุปยอด";}
+  };
+  if(st){document.getElementById("stDel").onclick=async()=>{try{await del(state.s,`platform_settlements?id=eq.${st.id}`);await reloadData();closeSheet();toast("ลบแล้ว");renderFinance();}catch(e){toast(e.message);}};}
 }
 function openFeeSheet(src){
   const f=feeForSource(src),l=(SRC.find(x=>x[0]===src)||[src,src])[1],today=bkkDate(new Date());
