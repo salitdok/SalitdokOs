@@ -197,7 +197,7 @@ function chLogo(slug){const c=chBySlug(slug);return c&&c.logo?c.logo:"";}
 function srcList(){const a=chActive();return a.length?a.map(c=>[c.slug,c.name]):SRC_FALLBACK;}
 // pricing channels = ทุกช่องทาง active (รวม manual ให้ override ได้)
 function priceChannels(){const a=chActive();return a.length?a.map(c=>[c.slug,c.name]):[["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];}
-// backward-compat proxies (โค้ดเดิมอ้าง SRC/SRC_MAP/SRC_COLOR/PRICE_CH)
+// backward-compat proxies (โค้ดเดิมอ้าง SRC_MAP/SRC_COLOR → เด้งไป master data)
 const SRC_MAP=new Proxy({},{get:(_,k)=>chName(String(k))});
 const SRC_COLOR=new Proxy({},{get:(_,k)=>chColor(String(k))});
 const TYPES=[["food","อาหาร"],["drink","เครื่องดื่ม"],["addon","Add-on"],["set","ชุดเซ็ต"]];
@@ -1201,8 +1201,8 @@ function renderSettings(){
   document.getElementById("logout").onclick=()=>doLogout();
 }
 // ===== Packaging Defaults (2.5b-①) =====
-const SRC_DEF=[["__all","ทุกช่องทาง"],["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];
-const srcDefLabel=v=>(SRC_DEF.find(x=>x[0]===(v||"__all"))||["__all","ทุกช่องทาง"])[1];
+function srcDefList(){return [["__all","ทุกช่องทาง"],...srcList()];}
+const srcDefLabel=v=>(!v||v==="__all")?"ทุกช่องทาง":chName(v);
 function pkgItems(){return state.data.inv.filter(i=>(i.kind||"food")!=="food");}
 function renderPackagingDefaults(){
   const im=ingMap(),mm=menuMap(),defs=(state.data.pkgDefaults||[]);
@@ -1226,7 +1226,7 @@ function renderPackagingDefaultEdit(def){
       <div class="fhint" style="margin-top:12px">จำนวนต่อออเดอร์</div>
       <input id="dfQty" class="nin" style="margin-top:6px" inputmode="decimal" value="${curQty}"/>
       <div class="fhint" style="margin-top:12px">ใช้กับช่องทาง</div>
-      <div class="chips" id="dfSrc" style="margin-top:6px">${SRC_DEF.map(([v,l])=>`<button type="button" class="chip sm ${v===curSrc?"active":""}" data-src="${v}">${l}</button>`).join("")}</div>
+      <div class="chips" id="dfSrc" style="margin-top:6px">${srcDefList().map(([v,l])=>`<button type="button" class="chip sm ${v===curSrc?"active":""}" data-src="${v}">${l}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">เฉพาะเมนู (ถ้าเลือก จะเติมเฉพาะเมื่อออเดอร์มีเมนูนี้)</div>
       <select id="dfMenu" class="nin" style="margin-top:6px"><option value="__all" ${curMenu==="__all"?"selected":""}>ทุกเมนู</option>${menus.map(m=>`<option value="${m.id}" ${m.id===curMenu?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
       <div class="swrow"><div class="swlabel">เปิดใช้</div><button class="sw ${curActive?"on":""}" id="dfActive"><span class="knob"></span></button></div>
@@ -1538,16 +1538,15 @@ function renderMenuEdit(m){
   renderRecipeRows();
 }
 const KIND_TH={food:"อาหาร",packaging:"บรรจุภัณฑ์",supply:"วัสดุสิ้นเปลือง"};
-const PRICE_CH=[["grab","Grab"],["lineman","LINE MAN"],["shopee","Shopee"],["manual","หน้าร้าน"]];
 function channelPriceBlock(kind,id){
   const cp=state.data.channelPrices||[];
-  const rows=PRICE_CH.map(([k,l])=>{const r=id?cp.find(p=>p.source===k&&(kind==="menu"?p.menu_item_id===id:p.addon_id===id)):null;const v=(r&&r.price!=null)?Number(r.price):"";return `<div class="row" style="margin-top:8px;align-items:center"><span style="width:96px;font-size:14px">${l}</span><input class="nin" style="margin-top:0;flex:1" id="cp_${k}" inputmode="decimal" placeholder="ใช้ราคาหลัก" value="${v}"/></div>`;}).join("");
+  const rows=priceChannels().map(([k,l])=>{const r=id?cp.find(p=>p.source===k&&(kind==="menu"?p.menu_item_id===id:p.addon_id===id)):null;const v=(r&&r.price!=null)?Number(r.price):"";return `<div class="row" style="margin-top:8px;align-items:center"><span style="width:110px;font-size:14px">${l}</span><input class="nin" style="margin-top:0;flex:1" id="cp_${k}" inputmode="decimal" placeholder="ใช้ราคาหลัก" value="${v}"/></div>`;}).join("");
   return `<div class="blocktitle">ราคาตามช่องทาง (เว้นว่าง = ใช้ราคาหลัก)</div><div class="block">${rows}<div class="cmeta" style="margin-top:10px">กรอกเฉพาะช่องทางที่ขายคนละราคา เช่น Grab/LINE MAN บวกค่า GP — เว้นว่างจะใช้ราคาหลักด้านบน</div></div>`;
 }
 async function saveChannelPrices(kind,targetId){
   const col=kind==="menu"?"menu_item_id":"addon_id";
   await del(state.s,`channel_prices?${col}=eq.${targetId}`);
-  const rows=[];for(const[k]of PRICE_CH){const raw=(val("cp_"+k)||"").trim();if(raw==="")continue;const n=parseFloat(raw);if(!isNaN(n)&&n>0)rows.push({store_id:state.data.store.id,source:k,[col]:targetId,price:n});}
+  const rows=[];for(const[k]of priceChannels()){const raw=(val("cp_"+k)||"").trim();if(raw==="")continue;const n=parseFloat(raw);if(!isNaN(n)&&n>0)rows.push({store_id:state.data.store.id,source:k,[col]:targetId,price:n});}
   if(rows.length)await post(state.s,"channel_prices",rows,"return=minimal");
 }
 const KIND_COLOR={food:"#0E9F6E",packaging:"#2563EB",supply:"#7C3AED"};
