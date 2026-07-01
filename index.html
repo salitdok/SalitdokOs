@@ -586,6 +586,10 @@ async function fillPLReport(r){
     const csrc=await safeRest(state.s,`v_cogs_by_source_daily?select=source,sales,cogs,orders_count&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
     const ofd=await safeRest(state.s,`v_order_financials_daily?select=source,app_cost,net_receivable&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
     const adsrc=await safeRest(state.s,`v_ad_cost_daily?select=source,ad_cost_incl_perday&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const menuP=await safeRest(state.s,`v_menu_profit?select=menu_item_id,menu_name,qty,revenue,cogs,gross_profit&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const d0=new Date(f+"T00:00:00Z"),d1=new Date(t+"T00:00:00Z"),len=Math.round((d1-d0)/86400000)+1;
+    const pTo=new Date(d0);pTo.setUTCDate(pTo.getUTCDate()-1);const pFrom=new Date(pTo);pFrom.setUTCDate(pFrom.getUTCDate()-(len-1));const iso=d=>d.toISOString().slice(0,10);
+    const plPrev=await safeRest(state.s,`v_pl_daily?select=revenue,total_app_cost,cogs,net_profit&store_id=eq.${sid}&day=gte.${iso(pFrom)}&day=lte.${iso(pTo)}`);
     const revenue=sum(pl,"revenue"),orders=sum(pl,"orders_count");
     const pf=sum(pl,"platform_fee_incl"),promo=sum(pl,"merchant_promo_incl"),camp=sum(pl,"campaign_incl"),comp=sum(pl,"comp_refund_adj_incl");
     const appFee=sum(pl,"app_fee_total"),ads=sum(pl,"app_ads"),appTotal=sum(pl,"total_app_cost");
@@ -612,6 +616,16 @@ async function fillPLReport(r){
     for(const x of adsrc){const e=get(x.source||"manual");e.ads+=Number(x.ad_cost_incl_perday)||0;}
     const chArr=Object.entries(ch).map(([s,v])=>({s,...v,net:v.sales-v.app-v.ads-v.cogs})).sort((a,b)=>b.sales-a.sales);
     const chMax=Math.max(1,...chArr.map(x=>x.sales));
+    // เทียบช่วงก่อนหน้า
+    const pRev=sum(plPrev,"revenue"),pApp=sum(plPrev,"total_app_cost"),pCogs=sum(plPrev,"cogs"),pNet=sum(plPrev,"net_profit");
+    const dlt=(cur,prev)=>{if(!prev)return cur?{t:"ใหม่",c:"#888"}:{t:"—",c:"#888"};const p=r2((cur-prev)/Math.abs(prev)*100);return {t:(p>=0?"▲":"▼")+Math.abs(p)+"%",c:p>=0?BRAND.up:"#c0392b"};};
+    const cmpRow=(l,cur,prev)=>{const d=dlt(cur,prev);return `<div class="row" style="margin-top:5px"><span>${l}</span><span><b class="tnum">${fmtTHB(cur)}</b> <span style="color:${d.c};font-size:12px;margin-left:4px">${d.t}</span></span></div>`;};
+    const hasPrev=(pRev||pNet||pApp||pCogs);
+    const compareSection=hasPrev?`<div class="sec"><div class="sectitle">เทียบช่วงก่อนหน้า (${iso(pFrom)} – ${iso(pTo)})</div><div class="block"><div class="costsum">${cmpRow("Revenue",revenue,pRev)}${cmpRow("App Cost",appTotal,pApp)}${cmpRow("COGS",cg,pCogs)}${cmpRow("Net Profit",netProfit,pNet)}</div></div></div>`:"";
+    // กำไรต่อเมนู
+    const mg={};for(const x of menuP){const e=mg[x.menu_item_id]||(mg[x.menu_item_id]={name:x.menu_name,qty:0,rev:0,cogs:0,gp:0});e.qty+=Number(x.qty)||0;e.rev+=Number(x.revenue)||0;e.cogs+=Number(x.cogs)||0;e.gp+=Number(x.gross_profit)||0;}
+    const mArr=Object.values(mg).sort((a,b)=>b.gp-a.gp);
+    const menuSection=mArr.length?`<div class="sec"><div class="sectitle">กำไรต่อเมนู</div><div class="block"><div class="cmeta" style="margin-bottom:8px">Gross = จริงจาก snapshot · Est. Net = ปันค่าแอปตามสัดส่วนยอดขาย <b>(ประมาณการ)</b></div>${mArr.map(m=>{const gm=pct(m.gp,m.rev),alloc=revenue>0?appTotal*(m.rev/revenue):0,estNet=m.gp-alloc,per=m.qty>0?m.gp/m.qty:0;return `<div style="margin-bottom:9px;border-bottom:1px solid var(--line);padding-bottom:8px"><div class="row"><b>${esc(m.name)}</b><b class="tnum" style="color:${BRAND.up}">GP ${fmtTHB(m.gp)}</b></div><div class="cmeta" style="margin-top:2px">${fmt2(m.qty)} จาน · ยอดขาย ${fmtTHB(m.rev)} · GP/จาน ${fmtTHB(per)} · Margin ${gm}%</div><div class="cmeta" style="margin-top:2px">Est. Net ${fmtTHB(estNet)} <span style="opacity:.7">(ประมาณการ · ปันค่าแอป ${fmtTHB(alloc)})</span></div></div>`;}).join("")}</div></div>`:"";
     const accts=state.data.cashAccounts||[];
     body.innerHTML=`
       <div class="sec"><div class="grid">
@@ -620,6 +634,7 @@ async function fillPLReport(r){
         ${kpi("COGS",fmtTHB(cg),pct(cg,revenue)+"%")}
         ${kpi("Net Profit",fmtTHB(netProfit),pct(netProfit,revenue)+"% margin",netProfit>=0?BRAND.up:"#c0392b")}
       </div></div>
+      ${compareSection}
       <div class="sec"><div class="sectitle">ตัวชี้วัด (KPI)</div><div class="block"><div class="costsum">
         ${R("AOV (เฉลี่ย/บิล)",aov,{top:0})}
         <div class="row" style="margin-top:4px"><span class="cmeta">Food Cost %</span><b class="tnum">${pct(food,revenue)}%</b></div>
@@ -648,6 +663,7 @@ async function fillPLReport(r){
       </div></div></div>
       <div class="sec"><div class="sectitle">🌊 Profit Waterfall</div><div class="block">${wfHTML}</div></div>
       ${chArr.length?`<div class="sec"><div class="sectitle">วิเคราะห์ตามช่องทาง</div>${chArr.map(x=>`<div class="block" style="margin-bottom:10px"><div class="row"><b>${SRC_MAP[x.s]||x.s}</b><b class="tnum" style="color:${x.net>=0?BRAND.up:"#c0392b"}">กำไร ${fmtTHB(x.net)}</b></div><div style="height:7px;border-radius:99px;background:#eee;margin:5px 0 6px;overflow:hidden"><div style="height:100%;width:${Math.round(x.sales/chMax*100)}%;background:${SRC_COLOR[x.s]||"#888"}"></div></div><div class="cmeta">ยอดขาย ${fmtTHB(x.sales)} · ค่าแอป ${fmtTHB(x.app+x.ads)} · COGS ${fmtTHB(x.cogs)} · Margin ${pct(x.net,x.sales)}%</div></div>`).join("")}</div>`:""}
+      ${menuSection}
       <div class="sec"><div class="sectitle">💵 กระแสเงินสด (ดำเนินงาน)</div><div class="block"><div class="costsum">
         ${R("เงินเข้า — ยอดขาย",revenue,{top:0})}
         ${R("เงินออก — ค่าใช้จ่าย (OpEx)",opex,{neg:true})}
