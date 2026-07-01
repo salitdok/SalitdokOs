@@ -268,7 +268,8 @@ async function loadMaster(s,storeId){
   const adCosts=await safeRest(s,`platform_ad_costs?select=id,source,campaign,period_start,period_end,ad_cost_before_vat,ad_vat_rate,ad_vat_amount,ad_cost_including_vat,note&store_id=eq.${storeId}&order=period_start.desc`);
   const expenses=await safeRest(s,`expenses?select=id,category_id,cash_account_id,amount,source,paid_at,note&store_id=eq.${storeId}&order=paid_at.desc&limit=60`);
   const recurring=await safeRest(s,`recurring_expenses?select=id,category_id,cash_account_id,name,amount,source,day_of_month,active&store_id=eq.${storeId}`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring};
+  const plMonthly=await safeRest(s,`v_pl_monthly?select=month,revenue,app_fee_cost,ad_cost,cogs,food_cost,packaging_cost,consumable_cost,expense_total,net_receivable_from_orders,net_after_app,gross_profit_after_app,net_profit&store_id=eq.${storeId}&order=month.desc&limit=12`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonthly};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -276,7 +277,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonthly:m.plMonthly};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -514,9 +515,9 @@ async function renderReports(preset){
   const presets=[["today","วันนี้"],["7d","7 วัน"],["month","เดือนนี้"],["custom","กำหนดเอง"]];
   const chips=presets.map(([k,l])=>`<button class="chip ${r.preset===k?"active":""}" data-rp="${k}">${l}</button>`).join("");
   const customBar=r.preset==="custom"?`<div class="block" style="display:flex;gap:8px;align-items:center"><input type="date" id="rFrom" class="nin" style="margin-top:0" value="${esc(r.from)}"><span>ถึง</span><input type="date" id="rTo" class="nin" style="margin-top:0" value="${esc(r.to)}"><button class="chip active" id="rGo">ดู</button></div>`:"";
-  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":tab==="crm"?"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย":"มูลค่าของเสีย/ทิ้ง จาก stock_movements (kind=waste)";
+  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":tab==="crm"?"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย":tab==="pl"?"กำไรสุทธิ = ยอดขาย − ค่าแอป − COGS − ค่าใช้จ่าย":"มูลค่าของเสีย/ทิ้ง จาก stock_movements (kind=waste)";
   app.innerHTML=shell("reports",`<div class="phead"><div class="ptitle">รายงาน</div><button class="iconbtn" id="toDash">‹</button></div>
-    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button><button class="segbtn ${tab==="waste"?"on":""}" data-rt="waste">ของเสีย</button></div>
+    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="pl"?"on":""}" data-rt="pl">กำไรสุทธิ</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button><button class="segbtn ${tab==="waste"?"on":""}" data-rt="waste">ของเสีย</button></div>
     <div class="block"><div class="chips" id="rpChips">${chips}</div></div>
     ${customBar}
     <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ${note}</div>
@@ -528,6 +529,7 @@ async function renderReports(preset){
   if(r.preset==="custom"){document.getElementById("rGo").onclick=()=>{const f=val("rFrom"),t=val("rTo");if(f&&t){state.reportRange={preset:"custom",from:f,to:t};renderReports();}};}
   if(tab==="crm"){fillCRMReport(r);return;}
   if(tab==="waste"){fillWasteReport(r);return;}
+  if(tab==="pl"){fillPLReport(r);return;}
   try{
     const {sales,cogs}=await fetchReport(r.from,r.to);
     const totSales=sales.reduce((a,x)=>a+Number(x.sales||0),0),totOrders=sales.reduce((a,x)=>a+Number(x.orders_count||0),0);
@@ -570,6 +572,59 @@ async function renderReports(preset){
       ${days.length?`<div class="sec"><div class="sectitle">รายวัน</div><div class="block">${days.map(d=>`<div class="row" style="margin-bottom:6px"><span class="cmeta">${d}</span><b class="tnum">${fmtTHB(byDay[d])}</b></div>`).join("")}</div></div>`:`<div class="empty">ยังไม่มียอดขายในช่วงนี้</div>`}
       <div style="height:20px"></div>`;
   }catch(e){document.getElementById("repBody").innerHTML=`<div class="empty">โหลดรายงานไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
+async function fillPLReport(r){
+  const body=document.getElementById("repBody");if(!body)return;
+  body.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
+  try{
+    const sid=state.data.store.id,f=r.from,t=r.to;
+    const sum=(rows,k)=>rows.reduce((a,x)=>a+(Number(x[k])||0),0);
+    const sales=await safeRest(state.s,`v_sales_daily?select=sales,orders_count&store_id=eq.${sid}&sale_date=gte.${f}&sale_date=lte.${t}`);
+    const cogs=await safeRest(state.s,`v_cogs_daily?select=food_cost,packaging_cost,consumable_cost,cogs&store_id=eq.${sid}&sale_date=gte.${f}&sale_date=lte.${t}`);
+    const exp=await safeRest(state.s,`v_expense_daily?select=expense_total&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const ad=await safeRest(state.s,`v_ad_cost_daily?select=ad_cost_incl_perday&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const ofd=await safeRest(state.s,`v_order_financials_daily?select=source,gross_sales,platform_fee_incl,promo_incl,comp_incl,app_cost,net_receivable&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const revenue=sum(sales,"sales"),orders=sum(sales,"orders_count");
+    const gp=sum(ofd,"platform_fee_incl"),promo=sum(ofd,"promo_incl"),comp=sum(ofd,"comp_incl"),appCost=gp+promo+comp;
+    const adCost=sum(ad,"ad_cost_incl_perday");
+    const food=sum(cogs,"food_cost"),pkg=sum(cogs,"packaging_cost"),con=sum(cogs,"consumable_cost"),cg=sum(cogs,"cogs");
+    const opex=sum(exp,"expense_total");
+    const netReceivable=revenue-appCost, netAfterApp=netReceivable-adCost, gpAfterApp=netAfterApp-cg, netProfit=gpAfterApp-opex;
+    const npm=revenue>0?r2(netProfit/revenue*100):0;
+    const R=(l,v,opt)=>{const st=opt||{};return `<div class="row" style="margin-top:${st.top||3}px${st.line?";border-top:1px solid #f0d8c8;padding-top:6px":""}"><span${st.dim?' class="cmeta"':""}>${l}</span><b class="tnum"${st.color?` style="color:${st.color}"`:""}>${st.neg&&Number(v)!==0?"−":""}${fmtTHB(Math.abs(v))}</b></div>`;};
+    // per channel
+    const bySrc={};for(const x of ofd){const s=x.source||"manual";const e=bySrc[s]||(bySrc[s]={gross:0,app:0,net:0});e.gross+=Number(x.gross_sales)||0;e.app+=Number(x.app_cost)||0;e.net+=Number(x.net_receivable)||0;}
+    const srcArr=Object.entries(bySrc).sort((a,b)=>b[1].gross-a[1].gross);
+    // accounts
+    const accts=state.data.cashAccounts||[];
+    body.innerHTML=`
+      <div class="sec"><div class="grid">
+        <div class="anum"><div class="anumlabel">Net Profit</div><div class="anumval tnum" style="font-size:18px;color:${netProfit>=0?BRAND.up:"#c0392b"}">${fmtTHB(netProfit)}</div><div class="anumlabel" style="margin-top:2px">${npm}% ของยอดขาย</div></div>
+        <div class="anum"><div class="anumlabel">ยอดขาย</div><div class="anumval tnum" style="font-size:18px">${fmtTHB(revenue)}</div><div class="anumlabel" style="margin-top:2px">${orders} บิล</div></div>
+      </div></div>
+      <div class="sec"><div class="sectitle">งบกำไรขาดทุน (P&L)</div><div class="block"><div class="costsum">
+        ${R("Revenue (ยอดขาย)",revenue,{top:0})}
+        ${R("− Platform Fee / GP incl. VAT",gp,{neg:true,dim:true})}
+        ${R("− Merchant Promo incl. VAT",promo,{neg:true,dim:true})}
+        ${R("− Compensation / Refund / Adjust incl. VAT",comp,{neg:true,dim:true})}
+        ${R("Net Receivable from Orders",netReceivable,{line:true})}
+        ${R("− App Ads incl. VAT",adCost,{neg:true,dim:true})}
+        ${R("Net After App",netAfterApp,{line:true})}
+        ${R("− COGS",cg,{neg:true,dim:true})}
+        <div class="cmeta" style="margin-left:10px">Food ${fmtTHB(food)} · Packaging ${fmtTHB(pkg)} · Consumable ${fmtTHB(con)}</div>
+        ${R("Gross Profit after App",gpAfterApp,{line:true,color:BRAND.up})}
+        ${R("− OpEx (ค่าใช้จ่ายดำเนินงาน)",opex,{neg:true,dim:true})}
+        ${R("Net Profit",netProfit,{line:true,color:netProfit>=0?BRAND.up:"#c0392b"})}
+      </div></div></div>
+      ${srcArr.length?`<div class="sec"><div class="sectitle">ค่าแอปแยกช่องทาง</div><div class="block">${srcArr.map(([s,v])=>`<div style="margin-bottom:8px"><div class="row"><b>${SRC_MAP[s]||s}</b><b class="tnum">รับจริง ${fmtTHB(v.net)}</b></div><div class="cmeta">ยอดขาย ${fmtTHB(v.gross)} · ค่าแอป ${fmtTHB(v.app)}</div></div>`).join("")}</div></div>`:""}
+      <div class="sec"><div class="sectitle">💵 กระแสเงินสด (ดำเนินงาน)</div><div class="block"><div class="costsum">
+        ${R("เงินเข้า — ยอดขาย",revenue,{top:0})}
+        ${R("เงินออก — ค่าใช้จ่าย (OpEx)",opex,{neg:true})}
+        ${R("กระแสเงินสดสุทธิ",revenue-opex,{line:true,color:(revenue-opex)>=0?BRAND.up:"#c0392b"})}
+      </div><div class="cmeta" style="margin-top:8px">มุมมองดำเนินงาน (ยอดขาย − ค่าใช้จ่าย) — เวลาแอปโอนจริงอาจต่างจากวันขาย ดูกระทบเงินจริงที่ “บันทึกสรุปยอดแอป” (เร็ว ๆ นี้)</div>
+      ${accts.length?`<div style="margin-top:10px">${accts.map(a=>{const b=acctBal(a.id);return `<div class="row" style="margin-top:4px"><span class="cmeta">${esc(a.name)}</span><b class="tnum">${fmtTHB(b!=null?b:a.opening_balance)}</b></div>`;}).join("")}</div>`:""}</div></div>
+      <div style="height:20px"></div>`;
+  }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 async function fillWasteReport(r){
   const body=document.getElementById("repBody");if(!body)return;
@@ -625,6 +680,7 @@ function fillCRMReport(r){
     <div style="height:20px"></div>`;
 }
 
+function plCurrentMonth(){const cur=monthOf(new Date());return (state.data.plMonthly||[]).find(p=>String(p.month).slice(0,7)===cur)||null;}
 function lowStockCard(){
   const low=(state.data.stock||[]).filter(s=>s.low_stock);
   if(!low.length)return "";
@@ -678,6 +734,7 @@ function renderDash(){
       <div style="height:12px"></div>
       <div class="grid"><div class="minilist">${topList("เมนูขายดี",f.topMenus,"จาน")}</div><div class="minilist">${topList("Add-on ขายดี",f.topAddons,"ครั้ง")}</div></div>
     </div>
+    ${(()=>{const p=plCurrentMonth();if(!p)return "";const np=Number(p.net_profit)||0,appAll=Number(p.app_fee_cost||0)+Number(p.ad_cost||0);return `<div class="sec"><div class="sectitle">💰 กำไรสุทธิเดือนนี้</div><div class="block"><div class="row"><b>Net Profit</b><b class="tnum" style="font-size:18px;color:${np>=0?BRAND.up:"#c0392b"}">${fmtTHB(np)}</b></div><div class="cmeta" style="margin-top:6px">ยอดขาย ${fmtTHB(p.revenue)} · ค่าแอป ${fmtTHB(appAll)} · COGS ${fmtTHB(p.cogs)} · OpEx ${fmtTHB(p.expense_total)}</div><button class="ghostbtn" id="toPL" style="margin-top:10px">ดูงบกำไรขาดทุนเต็ม →</button></div></div>`;})()}
     <div class="sec"><div class="sectitle">👑 Loyalty</div>
       <div class="grid">
         ${["new","regular","silver","gold","platinum","vip"].map(k=>`<div class="anum"><div class="anumlabel">${levelBadge(k)}</div><div class="anumval">${L.counts[k]||0} คน</div></div>`).join("")}
@@ -704,6 +761,7 @@ function renderDash(){
   document.getElementById("refresh").onclick=async()=>{try{await reloadData();renderDash();toast("อัปเดตแล้ว");}catch(e){e.code===401?doLogout("เซสชันหมดอายุ"):toast(e.message);}};
   document.getElementById("costDetail").onclick=openCostSheet;
   document.querySelectorAll("[data-lowstock]").forEach(b=>b.onclick=()=>{const it=state.data.inv.find(i=>i.id===b.dataset.lowstock);state.menuSeg="ingredients";it?renderIngredientEdit(it):navigate("menu");});
+  {const tp=document.getElementById("toPL");if(tp)tp.onclick=()=>{state.reportTab="pl";navigate("reports");};}
   document.getElementById("settings").onclick=renderSettings;
   document.querySelectorAll("[data-loyal-cid]").forEach(b=>b.onclick=()=>{const c=state.data.customers.find(x=>x.id===b.dataset.loyalCid);if(c)renderCustomerDetail(c);});
   document.querySelectorAll("[data-ai]").forEach(b=>b.onclick=()=>handleAction(state.aiActions[+b.dataset.ai].action));
