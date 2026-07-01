@@ -579,49 +579,80 @@ async function fillPLReport(r){
   try{
     const sid=state.data.store.id,f=r.from,t=r.to;
     const sum=(rows,k)=>rows.reduce((a,x)=>a+(Number(x[k])||0),0);
-    const sales=await safeRest(state.s,`v_sales_daily?select=sales,orders_count&store_id=eq.${sid}&sale_date=gte.${f}&sale_date=lte.${t}`);
-    const cogs=await safeRest(state.s,`v_cogs_daily?select=food_cost,packaging_cost,consumable_cost,cogs&store_id=eq.${sid}&sale_date=gte.${f}&sale_date=lte.${t}`);
-    const exp=await safeRest(state.s,`v_expense_daily?select=expense_total&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
-    const ad=await safeRest(state.s,`v_ad_cost_daily?select=ad_cost_incl_perday&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
-    const ofd=await safeRest(state.s,`v_order_financials_daily?select=source,gross_sales,platform_fee_incl,promo_incl,comp_incl,app_cost,net_receivable&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
-    const revenue=sum(sales,"sales"),orders=sum(sales,"orders_count");
-    const gp=sum(ofd,"platform_fee_incl"),promo=sum(ofd,"promo_incl"),comp=sum(ofd,"comp_incl"),appCost=gp+promo+comp;
-    const adCost=sum(ad,"ad_cost_incl_perday");
-    const food=sum(cogs,"food_cost"),pkg=sum(cogs,"packaging_cost"),con=sum(cogs,"consumable_cost"),cg=sum(cogs,"cogs");
-    const opex=sum(exp,"expense_total");
-    const netReceivable=revenue-appCost, netAfterApp=netReceivable-adCost, gpAfterApp=netAfterApp-cg, netProfit=gpAfterApp-opex;
-    const npm=revenue>0?r2(netProfit/revenue*100):0;
+    const pct=(p,w)=>w>0?r2(p/w*100):0;
+    // === Single Source: v_pl_daily ===
+    const pl=await safeRest(state.s,`v_pl_daily?select=*&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    // per-channel: COGS/ยอดขาย (แม่น) + ค่าแอป + โฆษณา
+    const csrc=await safeRest(state.s,`v_cogs_by_source_daily?select=source,sales,cogs,orders_count&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const ofd=await safeRest(state.s,`v_order_financials_daily?select=source,app_cost,net_receivable&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const adsrc=await safeRest(state.s,`v_ad_cost_daily?select=source,ad_cost_incl_perday&store_id=eq.${sid}&day=gte.${f}&day=lte.${t}`);
+    const revenue=sum(pl,"revenue"),orders=sum(pl,"orders_count");
+    const pf=sum(pl,"platform_fee_incl"),promo=sum(pl,"merchant_promo_incl"),camp=sum(pl,"campaign_incl"),comp=sum(pl,"comp_refund_adj_incl");
+    const appFee=sum(pl,"app_fee_total"),ads=sum(pl,"app_ads"),appTotal=sum(pl,"total_app_cost");
+    const food=sum(pl,"food_cost"),pkg=sum(pl,"packaging_cost"),con=sum(pl,"consumable_cost"),cg=sum(pl,"cogs");
+    const netReceivable=sum(pl,"net_receivable"),netAfterApp=sum(pl,"net_after_app"),gpAfterApp=sum(pl,"gross_profit_after_app"),opex=sum(pl,"opex"),netProfit=sum(pl,"net_profit");
+    const aov=orders>0?revenue/orders:0;
     const R=(l,v,opt)=>{const st=opt||{};return `<div class="row" style="margin-top:${st.top||3}px${st.line?";border-top:1px solid #f0d8c8;padding-top:6px":""}"><span${st.dim?' class="cmeta"':""}>${l}</span><b class="tnum"${st.color?` style="color:${st.color}"`:""}>${st.neg&&Number(v)!==0?"−":""}${fmtTHB(Math.abs(v))}</b></div>`;};
-    // per channel
-    const bySrc={};for(const x of ofd){const s=x.source||"manual";const e=bySrc[s]||(bySrc[s]={gross:0,app:0,net:0});e.gross+=Number(x.gross_sales)||0;e.app+=Number(x.app_cost)||0;e.net+=Number(x.net_receivable)||0;}
-    const srcArr=Object.entries(bySrc).sort((a,b)=>b[1].gross-a[1].gross);
-    // accounts
+    const kpi=(l,v,sub,color)=>`<div class="anum"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:17px${color?`;color:${color}`:""}">${v}</div>${sub?`<div class="anumlabel" style="margin-top:2px">${sub}</div>`:""}</div>`;
+    // === Waterfall ===
+    const wf=[];let run=revenue;
+    const step=(label,delta,milestone)=>{if(milestone){wf.push({label,val:run,milestone:true});}else{run-=delta;wf.push({label,delta,val:run});}};
+    wf.push({label:"Revenue",val:revenue,milestone:true,start:true});
+    step("− Platform Fee",pf);step("− Merchant Promo/Campaign",promo+camp);step("− Comp/Refund/Adjust",comp);
+    step("Net Receivable",0,true);step("− App Ads",ads);step("Net After App",0,true);
+    step("− COGS",cg);step("Gross Profit after App",0,true);step("− OpEx",opex);step("Net Profit",0,true);
+    const wfMax=Math.max(1,revenue);
+    const wfHTML=wf.map(x=>{const w=Math.max(0,Math.round((x.val/wfMax)*100));const isNeg=!x.milestone;const col=x.milestone?(x.label==="Net Profit"?(x.val>=0?BRAND.up:"#c0392b"):"#334155"):"#c0392b";
+      return `<div style="margin-bottom:9px"><div class="row"><span${isNeg?' class="cmeta"':' style="font-weight:700"'}>${x.label}</span><b class="tnum" style="color:${col}">${isNeg?"−"+fmtTHB(x.delta):fmtTHB(x.val)}</b></div>${x.milestone?`<div style="height:8px;border-radius:99px;background:#eee;margin-top:4px;overflow:hidden"><div style="height:100%;width:${w}%;background:${x.label==="Net Profit"?(x.val>=0?BRAND.up:"#c0392b"):BRAND.orange}"></div></div>`:""}</div>`;}).join("");
+    // === per channel (net profit + margin) ===
+    const ch={};
+    const get=(s)=>ch[s]||(ch[s]={sales:0,cogs:0,app:0,ads:0,orders:0});
+    for(const x of csrc){const e=get(x.source||"manual");e.sales+=Number(x.sales)||0;e.cogs+=Number(x.cogs)||0;e.orders+=Number(x.orders_count)||0;}
+    for(const x of ofd){const e=get(x.source||"manual");e.app+=Number(x.app_cost)||0;}
+    for(const x of adsrc){const e=get(x.source||"manual");e.ads+=Number(x.ad_cost_incl_perday)||0;}
+    const chArr=Object.entries(ch).map(([s,v])=>({s,...v,net:v.sales-v.app-v.ads-v.cogs})).sort((a,b)=>b.sales-a.sales);
+    const chMax=Math.max(1,...chArr.map(x=>x.sales));
     const accts=state.data.cashAccounts||[];
     body.innerHTML=`
       <div class="sec"><div class="grid">
-        <div class="anum"><div class="anumlabel">Net Profit</div><div class="anumval tnum" style="font-size:18px;color:${netProfit>=0?BRAND.up:"#c0392b"}">${fmtTHB(netProfit)}</div><div class="anumlabel" style="margin-top:2px">${npm}% ของยอดขาย</div></div>
-        <div class="anum"><div class="anumlabel">ยอดขาย</div><div class="anumval tnum" style="font-size:18px">${fmtTHB(revenue)}</div><div class="anumlabel" style="margin-top:2px">${orders} บิล</div></div>
+        ${kpi("Revenue",fmtTHB(revenue),orders+" บิล")}
+        ${kpi("Net Receivable",fmtTHB(netReceivable),"หลังหักแอป")}
+        ${kpi("COGS",fmtTHB(cg),pct(cg,revenue)+"%")}
+        ${kpi("Net Profit",fmtTHB(netProfit),pct(netProfit,revenue)+"% margin",netProfit>=0?BRAND.up:"#c0392b")}
       </div></div>
+      <div class="sec"><div class="sectitle">ตัวชี้วัด (KPI)</div><div class="block"><div class="costsum">
+        ${R("AOV (เฉลี่ย/บิล)",aov,{top:0})}
+        <div class="row" style="margin-top:4px"><span class="cmeta">Food Cost %</span><b class="tnum">${pct(food,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px"><span class="cmeta">Packaging %</span><b class="tnum">${pct(pkg,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px"><span class="cmeta">Consumable %</span><b class="tnum">${pct(con,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px"><span class="cmeta">App Cost %</span><b class="tnum">${pct(appTotal,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px"><span class="cmeta">Contribution Margin %</span><b class="tnum">${pct(gpAfterApp,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px"><span class="cmeta">OpEx %</span><b class="tnum">${pct(opex,revenue)}%</b></div>
+        <div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>Net Margin %</span><b class="tnum" style="color:${netProfit>=0?BRAND.up:"#c0392b"}">${pct(netProfit,revenue)}%</b></div>
+      </div></div></div>
       <div class="sec"><div class="sectitle">งบกำไรขาดทุน (P&L)</div><div class="block"><div class="costsum">
         ${R("Revenue (ยอดขาย)",revenue,{top:0})}
-        ${R("− Platform Fee / GP incl. VAT",gp,{neg:true,dim:true})}
+        ${R("− Platform Fee / GP incl. VAT",pf,{neg:true,dim:true})}
         ${R("− Merchant Promo incl. VAT",promo,{neg:true,dim:true})}
+        ${camp?R("− Campaign Fee incl. VAT",camp,{neg:true,dim:true}):""}
         ${R("− Compensation / Refund / Adjust incl. VAT",comp,{neg:true,dim:true})}
         ${R("Net Receivable from Orders",netReceivable,{line:true})}
-        ${R("− App Ads incl. VAT",adCost,{neg:true,dim:true})}
+        ${R("− App Ads incl. VAT",ads,{neg:true,dim:true})}
         ${R("Net After App",netAfterApp,{line:true})}
         ${R("− COGS",cg,{neg:true,dim:true})}
         <div class="cmeta" style="margin-left:10px">Food ${fmtTHB(food)} · Packaging ${fmtTHB(pkg)} · Consumable ${fmtTHB(con)}</div>
         ${R("Gross Profit after App",gpAfterApp,{line:true,color:BRAND.up})}
         ${R("− OpEx (ค่าใช้จ่ายดำเนินงาน)",opex,{neg:true,dim:true})}
         ${R("Net Profit",netProfit,{line:true,color:netProfit>=0?BRAND.up:"#c0392b"})}
+        <div class="row" style="margin-top:6px;border-top:1px dashed #ddd;padding-top:6px"><span class="cmeta">🧾 รวมค่าใช้จ่ายจากแอป (Total App Cost)</span><b class="tnum" style="color:#c0392b">${fmtTHB(appTotal)}</b></div>
       </div></div></div>
-      ${srcArr.length?`<div class="sec"><div class="sectitle">ค่าแอปแยกช่องทาง</div><div class="block">${srcArr.map(([s,v])=>`<div style="margin-bottom:8px"><div class="row"><b>${SRC_MAP[s]||s}</b><b class="tnum">รับจริง ${fmtTHB(v.net)}</b></div><div class="cmeta">ยอดขาย ${fmtTHB(v.gross)} · ค่าแอป ${fmtTHB(v.app)}</div></div>`).join("")}</div></div>`:""}
+      <div class="sec"><div class="sectitle">🌊 Profit Waterfall</div><div class="block">${wfHTML}</div></div>
+      ${chArr.length?`<div class="sec"><div class="sectitle">วิเคราะห์ตามช่องทาง</div>${chArr.map(x=>`<div class="block" style="margin-bottom:10px"><div class="row"><b>${SRC_MAP[x.s]||x.s}</b><b class="tnum" style="color:${x.net>=0?BRAND.up:"#c0392b"}">กำไร ${fmtTHB(x.net)}</b></div><div style="height:7px;border-radius:99px;background:#eee;margin:5px 0 6px;overflow:hidden"><div style="height:100%;width:${Math.round(x.sales/chMax*100)}%;background:${SRC_COLOR[x.s]||"#888"}"></div></div><div class="cmeta">ยอดขาย ${fmtTHB(x.sales)} · ค่าแอป ${fmtTHB(x.app+x.ads)} · COGS ${fmtTHB(x.cogs)} · Margin ${pct(x.net,x.sales)}%</div></div>`).join("")}</div>`:""}
       <div class="sec"><div class="sectitle">💵 กระแสเงินสด (ดำเนินงาน)</div><div class="block"><div class="costsum">
         ${R("เงินเข้า — ยอดขาย",revenue,{top:0})}
         ${R("เงินออก — ค่าใช้จ่าย (OpEx)",opex,{neg:true})}
         ${R("กระแสเงินสดสุทธิ",revenue-opex,{line:true,color:(revenue-opex)>=0?BRAND.up:"#c0392b"})}
-      </div><div class="cmeta" style="margin-top:8px">มุมมองดำเนินงาน (ยอดขาย − ค่าใช้จ่าย) — เวลาแอปโอนจริงอาจต่างจากวันขาย ดูกระทบเงินจริงที่ “บันทึกสรุปยอดแอป” (เร็ว ๆ นี้)</div>
+      </div><div class="cmeta" style="margin-top:8px">มุมมองดำเนินงาน — เวลาแอปโอนจริงอาจต่างจากวันขาย ตรวจที่ “บันทึกสรุปยอดแอป” (3f)</div>
       ${accts.length?`<div style="margin-top:10px">${accts.map(a=>{const b=acctBal(a.id);return `<div class="row" style="margin-top:4px"><span class="cmeta">${esc(a.name)}</span><b class="tnum">${fmtTHB(b!=null?b:a.opening_balance)}</b></div>`;}).join("")}</div>`:""}</div></div>
       <div style="height:20px"></div>`;
   }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
