@@ -1326,7 +1326,7 @@ async function renderOrderDetail(id){
   document.getElementById("edit").onclick=()=>openEditOrder(o);
   if(fin){const fe=document.getElementById("finEdit");if(fe)fe.onclick=()=>openOrderFinSheet(o,fin);}
   else{const fi=document.getElementById("finInit");if(fi)fi.onclick=async()=>{try{await syncOrderFinancials(o.id,o.source,Number(o.net_total));await reloadData();toast("สร้างข้อมูลการเงินแล้ว");renderOrderDetail(o.id);}catch(e){toast(e.message);}};}
-  document.querySelectorAll("#osrcChips .chip").forEach(b=>b.onclick=async()=>{const src=b.dataset.osrc;if(src===o.source)return;try{await patch(state.s,`orders?id=eq.${o.id}`,{source:src});await reloadData();toast("เปลี่ยนช่องทางเป็น "+(SRC_MAP[src]||src));renderOrderDetail(o.id);}catch(e){toast(e.message);}});
+  document.querySelectorAll("#osrcChips .chip").forEach(b=>b.onclick=async()=>{const src=b.dataset.osrc;if(src===o.source)return;try{await patch(state.s,`orders?id=eq.${o.id}`,{source:src});try{await syncOrderFinancials(o.id,src,Number(o.net_total),true);}catch(e2){}await reloadData();toast("เปลี่ยนช่องทางเป็น "+(SRC_MAP[src]||src)+" · คำนวณ GP ใหม่");renderOrderDetail(o.id);}catch(e){toast(e.message);}});
   if(cancelled)document.getElementById("restore").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"completed"});await reloadData();toast("กู้คืนแล้ว");navigate("orders");}catch(e){toast(e.message);}};
   else document.getElementById("cancelo").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"cancelled"});await reloadData();toast("ยกเลิกออเดอร์แล้ว");navigate("orders");}catch(e){toast(e.message);}};
 }
@@ -1956,12 +1956,20 @@ function openOrderFinSheet(o,fin){
     catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกตัวเลข";}
   };
 }
-async function syncOrderFinancials(oid,source,gross){
+async function syncOrderFinancials(oid,source,gross,forceRate){
   const store_id=state.data.store.id;
-  const ex=await safeRest(state.s,`order_financials?select=order_id,platform_fee_rate&order_id=eq.${oid}&limit=1`);
+  const ex=await safeRest(state.s,`order_financials?select=order_id,source,platform_fee_rate&order_id=eq.${oid}&limit=1`);
   if(ex&&ex.length){
-    const rate=Number(ex[0].platform_fee_rate)||0;
-    await patch(state.s,`order_financials?order_id=eq.${oid}`,{source,gross_sales:gross,platform_fee_before_vat:r2(gross*rate)});
+    const channelChanged=(ex[0].source||"")!==source;
+    if(channelChanged||forceRate){
+      // ช่องทางเปลี่ยน → คำนวณ GP ใหม่ตามเรตช่องทางใหม่ (คงโปร/ชดเชยที่กรอกมือ)
+      const fee=feeForSource(source),rate=fee?Number(fee.fee_rate):0,vat=fee?Number(fee.fee_vat_rate):0;
+      await patch(state.s,`order_financials?order_id=eq.${oid}`,{source,gross_sales:gross,platform_fee_rate:rate,platform_fee_vat_rate:vat,platform_fee_before_vat:r2(gross*rate)});
+    }else{
+      // ช่องทางเดิม (แก้จำนวน/ยอด) → คงเรตเดิม
+      const rate=Number(ex[0].platform_fee_rate)||0;
+      await patch(state.s,`order_financials?order_id=eq.${oid}`,{gross_sales:gross,platform_fee_before_vat:r2(gross*rate)});
+    }
   }else{
     const fee=feeForSource(source),rate=fee?Number(fee.fee_rate):0,vat=fee?Number(fee.fee_vat_rate):0;
     await post(state.s,"order_financials",{order_id:oid,store_id,source,gross_sales:gross,platform_fee_rate:rate,platform_fee_vat_rate:vat,platform_fee_before_vat:r2(gross*rate)},"return=minimal");
