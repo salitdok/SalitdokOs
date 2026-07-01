@@ -596,7 +596,7 @@ async function fillPLReport(r){
     const food=sum(pl,"food_cost"),pkg=sum(pl,"packaging_cost"),con=sum(pl,"consumable_cost"),cg=sum(pl,"cogs");
     const netReceivable=sum(pl,"net_receivable"),netAfterApp=sum(pl,"net_after_app"),gpAfterApp=sum(pl,"gross_profit_after_app"),opex=sum(pl,"opex"),netProfit=sum(pl,"net_profit");
     const aov=orders>0?revenue/orders:0;
-    const R=(l,v,opt)=>{const st=opt||{};return `<div class="row" style="margin-top:${st.top||3}px${st.line?";border-top:1px solid #f0d8c8;padding-top:6px":""}"><span${st.dim?' class="cmeta"':""}>${l}</span><b class="tnum"${st.color?` style="color:${st.color}"`:""}>${st.neg&&Number(v)!==0?"−":""}${fmtTHB(Math.abs(v))}</b></div>`;};
+    const R=(l,v,opt)=>{const st=opt||{};const dr=st.drill?` data-drill="${st.drill}"`:"";return `<div class="row"${dr} style="margin-top:${st.top||3}px${st.line?";border-top:1px solid #f0d8c8;padding-top:6px":""}${st.drill?";cursor:pointer":""}"><span${st.dim?' class="cmeta"':""}>${l}${st.drill?` <span style="opacity:.35">›</span>`:""}</span><b class="tnum"${st.color?` style="color:${st.color}"`:""}>${st.neg&&Number(v)!==0?"−":""}${fmtTHB(Math.abs(v))}</b></div>`;};
     const kpi=(l,v,sub,color)=>`<div class="anum"><div class="anumlabel">${l}</div><div class="anumval tnum" style="font-size:17px${color?`;color:${color}`:""}">${v}</div>${sub?`<div class="anumlabel" style="margin-top:2px">${sub}</div>`:""}</div>`;
     // === Waterfall ===
     const wf=[];let run=revenue;
@@ -646,19 +646,19 @@ async function fillPLReport(r){
         <div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>Net Margin %</span><b class="tnum" style="color:${netProfit>=0?BRAND.up:"#c0392b"}">${pct(netProfit,revenue)}%</b></div>
       </div></div></div>
       <div class="sec"><div class="sectitle">งบกำไรขาดทุน (P&L)</div><div class="block"><div class="costsum">
-        ${R("Revenue (ยอดขาย)",revenue,{top:0})}
-        ${R("− Platform Fee / GP incl. VAT",pf,{neg:true,dim:true})}
-        ${R("− Merchant Promo incl. VAT",promo,{neg:true,dim:true})}
+        ${R("Revenue (ยอดขาย)",revenue,{top:0,drill:"revenue"})}
+        ${R("− Platform Fee / GP incl. VAT",pf,{neg:true,dim:true,drill:"gp"})}
+        ${R("− Merchant Promo incl. VAT",promo,{neg:true,dim:true,drill:"promo"})}
         ${camp?R("− Campaign Fee incl. VAT",camp,{neg:true,dim:true}):""}
         ${R("− Compensation / Refund / Adjust incl. VAT",comp,{neg:true,dim:true})}
         ${R("Net Receivable from Orders",netReceivable,{line:true})}
         ${R("− App Ads incl. VAT",ads,{neg:true,dim:true})}
         ${R("Net After App",netAfterApp,{line:true})}
-        ${R("− COGS",cg,{neg:true,dim:true})}
+        ${R("− COGS",cg,{neg:true,dim:true,drill:"cogs"})}
         <div class="cmeta" style="margin-left:10px">Food ${fmtTHB(food)} · Packaging ${fmtTHB(pkg)} · Consumable ${fmtTHB(con)}</div>
         ${R("Gross Profit after App",gpAfterApp,{line:true,color:BRAND.up})}
         ${R("− OpEx (ค่าใช้จ่ายดำเนินงาน)",opex,{neg:true,dim:true})}
-        ${R("Net Profit",netProfit,{line:true,color:netProfit>=0?BRAND.up:"#c0392b"})}
+        ${R("Net Profit",netProfit,{line:true,color:netProfit>=0?BRAND.up:"#c0392b",drill:"netprofit"})}
         <div class="row" style="margin-top:6px;border-top:1px dashed #ddd;padding-top:6px"><span class="cmeta">🧾 รวมค่าใช้จ่ายจากแอป (Total App Cost)</span><b class="tnum" style="color:#c0392b">${fmtTHB(appTotal)}</b></div>
       </div></div></div>
       <div class="sec"><div class="sectitle">🌊 Profit Waterfall</div><div class="block">${wfHTML}</div></div>
@@ -671,7 +671,34 @@ async function fillPLReport(r){
       </div><div class="cmeta" style="margin-top:8px">มุมมองดำเนินงาน — เวลาแอปโอนจริงอาจต่างจากวันขาย ตรวจที่ “บันทึกสรุปยอดแอป” (3f)</div>
       ${accts.length?`<div style="margin-top:10px">${accts.map(a=>{const b=acctBal(a.id);return `<div class="row" style="margin-top:4px"><span class="cmeta">${esc(a.name)}</span><b class="tnum">${fmtTHB(b!=null?b:a.opening_balance)}</b></div>`;}).join("")}</div>`:""}</div></div>
       <div style="height:20px"></div>`;
+    body.querySelectorAll("[data-drill]").forEach(el=>el.onclick=()=>openPLDrill(el.dataset.drill,f,t));
   }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
+async function openPLDrill(kind,f,t){
+  const TITLE={revenue:"Revenue — รายออเดอร์",gp:"Platform Fee / GP — ต่อออเดอร์",promo:"Merchant Promo — ต่อออเดอร์",cogs:"COGS — ต่อออเดอร์",netprofit:"Net Profit — ต่อออเดอร์"};
+  openSheet(TITLE[kind]||"รายละเอียด",`<div class="empty">กำลังโหลด…</div>`);
+  try{
+    const sid=state.data.store.id;
+    const start=new Date(f+"T00:00:00+07:00").toISOString(),end=new Date(t+"T23:59:59.999+07:00").toISOString();
+    const rows=await safeRest(state.s,`orders?select=id,ordered_at,net_total,source,food_cost_snapshot,packaging_cost_snapshot,consumable_cost_snapshot,cogs_snapshot,order_financials(platform_fee_before_vat,platform_fee_vat,merchant_promo_before_vat,merchant_promo_vat,campaign_fee_before_vat,campaign_fee_vat,total_app_cost_incl,net_receivable)&store_id=eq.${sid}&status=eq.completed&ordered_at=gte.${start}&ordered_at=lte.${end}&order=ordered_at.desc`);
+    const finOf=o=>{const x=o.order_financials;return Array.isArray(x)?(x[0]||null):(x||null);};
+    const valOf=o=>{const fin=finOf(o);const cogs=Number(o.cogs_snapshot)||0;
+      if(kind==="revenue")return Number(o.net_total)||0;
+      if(kind==="gp")return fin?Number(fin.platform_fee_before_vat)+Number(fin.platform_fee_vat):0;
+      if(kind==="promo")return fin?Number(fin.merchant_promo_before_vat)+Number(fin.merchant_promo_vat)+Number(fin.campaign_fee_before_vat)+Number(fin.campaign_fee_vat):0;
+      if(kind==="cogs")return cogs;
+      if(kind==="netprofit")return (Number(o.net_total)||0)-(fin?Number(fin.total_app_cost_incl):0)-cogs;
+      return 0;};
+    const list=rows.map(o=>({o,v:valOf(o)})).filter(x=>kind==="revenue"||kind==="netprofit"||x.v!==0).sort((a,b)=>b.v-a.v);
+    const tot=list.reduce((s,x)=>s+x.v,0);
+    const el=document.getElementById("sheetBody");if(!el)return;
+    const sub=o=>{if(kind==="cogs")return `Food ${fmtTHB(o.food_cost_snapshot)} · Pkg ${fmtTHB(o.packaging_cost_snapshot)} · Con ${fmtTHB(o.consumable_cost_snapshot)}`;
+      if(kind==="netprofit"){const fin=finOf(o);return `ขาย ${fmtTHB(o.net_total)} − แอป ${fmtTHB(fin?fin.total_app_cost_incl:0)} − COGS ${fmtTHB(o.cogs_snapshot)}`;}
+      return `${SRC_MAP[o.source]||o.source||"-"}`;};
+    el.innerHTML=`<div class="block" style="margin-bottom:8px"><div class="row"><span class="cmeta">รวม (${list.length} ออเดอร์)</span><b class="tnum">${fmtTHB(tot)}</b></div>${kind==="netprofit"?`<div class="cmeta" style="margin-top:6px">* กำไรระดับออเดอร์ (ยังไม่หักค่าโฆษณา/OpEx ซึ่งเป็นระดับช่วงเวลา)</div>`:""}</div>
+      <div class="block">${list.length?list.map(x=>`<button class="mmrow" data-oid="${x.o.id}" style="width:100%;text-align:left"><div class="mmmain"><div class="mmname">${bkkDate(new Date(x.o.ordered_at))} <span class="badge" style="font-size:10px;background:${(SRC_COLOR[x.o.source]||"#888")}22;color:${SRC_COLOR[x.o.source]||"#888"}">${SRC_MAP[x.o.source]||x.o.source||"-"}</span> <b class="tnum" style="float:right;color:${kind==="netprofit"&&x.v<0?"#c0392b":"inherit"}">${fmtTHB(x.v)}</b></div><div class="mmsub">${sub(x.o)}</div></div></button>`).join(""):`<div class="empty">ไม่มีข้อมูลในช่วงนี้</div>`}</div>`;
+    el.querySelectorAll("[data-oid]").forEach(b=>b.onclick=()=>{closeSheet();renderOrderDetail(b.dataset.oid);});
+  }catch(e){const el=document.getElementById("sheetBody");if(el)el.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 async function fillWasteReport(r){
   const body=document.getElementById("repBody");if(!body)return;
