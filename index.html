@@ -268,8 +268,9 @@ async function loadMaster(s,storeId){
   const adCosts=await safeRest(s,`platform_ad_costs?select=id,source,campaign,period_start,period_end,ad_cost_before_vat,ad_vat_rate,ad_vat_amount,ad_cost_including_vat,note&store_id=eq.${storeId}&order=period_start.desc`);
   const expenses=await safeRest(s,`expenses?select=id,category_id,cash_account_id,amount,source,paid_at,note&store_id=eq.${storeId}&order=paid_at.desc&limit=60`);
   const recurring=await safeRest(s,`recurring_expenses?select=id,category_id,cash_account_id,name,amount,source,day_of_month,active&store_id=eq.${storeId}`);
-  const plMonthly=await safeRest(s,`v_pl_monthly?select=month,revenue,app_fee_cost,ad_cost,cogs,food_cost,packaging_cost,consumable_cost,expense_total,net_receivable_from_orders,net_after_app,gross_profit_after_app,net_profit&store_id=eq.${storeId}&order=month.desc&limit=12`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonthly};
+  const monthStart=bkkDate(new Date()).slice(0,7)+"-01";
+  const plMonth=await safeRest(s,`v_pl_daily?select=revenue,total_app_cost,cogs,opex,net_profit&store_id=eq.${storeId}&day=gte.${monthStart}`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -277,7 +278,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonthly:m.plMonthly};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -754,7 +755,7 @@ function fillCRMReport(r){
     <div style="height:20px"></div>`;
 }
 
-function plCurrentMonth(){const cur=monthOf(new Date());return (state.data.plMonthly||[]).find(p=>String(p.month).slice(0,7)===cur)||null;}
+function plCurrentMonth(){const rows=state.data.plMonth||[];if(!rows.length)return null;const s=k=>rows.reduce((a,x)=>a+(Number(x[k])||0),0);return {revenue:s("revenue"),app_all:s("total_app_cost"),cogs:s("cogs"),expense_total:s("opex"),net_profit:s("net_profit")};}
 function lowStockCard(){
   const low=(state.data.stock||[]).filter(s=>s.low_stock);
   if(!low.length)return "";
@@ -808,7 +809,7 @@ function renderDash(){
       <div style="height:12px"></div>
       <div class="grid"><div class="minilist">${topList("เมนูขายดี",f.topMenus,"จาน")}</div><div class="minilist">${topList("Add-on ขายดี",f.topAddons,"ครั้ง")}</div></div>
     </div>
-    ${(()=>{const p=plCurrentMonth();if(!p)return "";const np=Number(p.net_profit)||0,appAll=Number(p.app_fee_cost||0)+Number(p.ad_cost||0);return `<div class="sec"><div class="sectitle">💰 กำไรสุทธิเดือนนี้</div><div class="block"><div class="row"><b>Net Profit</b><b class="tnum" style="font-size:18px;color:${np>=0?BRAND.up:"#c0392b"}">${fmtTHB(np)}</b></div><div class="cmeta" style="margin-top:6px">ยอดขาย ${fmtTHB(p.revenue)} · ค่าแอป ${fmtTHB(appAll)} · COGS ${fmtTHB(p.cogs)} · OpEx ${fmtTHB(p.expense_total)}</div><button class="ghostbtn" id="toPL" style="margin-top:10px">ดูงบกำไรขาดทุนเต็ม →</button></div></div>`;})()}
+    ${(()=>{const p=plCurrentMonth();if(!p)return "";const np=Number(p.net_profit)||0;return `<div class="sec"><div class="sectitle">💰 กำไรสุทธิเดือนนี้</div><div class="block"><div class="row"><b>Net Profit</b><b class="tnum" style="font-size:18px;color:${np>=0?BRAND.up:"#c0392b"}">${fmtTHB(np)}</b></div><div class="cmeta" style="margin-top:6px">ยอดขาย ${fmtTHB(p.revenue)} · ค่าแอป ${fmtTHB(p.app_all)} · COGS ${fmtTHB(p.cogs)} · OpEx ${fmtTHB(p.expense_total)}</div><button class="ghostbtn" id="toPL" style="margin-top:10px">ดูงบกำไรขาดทุนเต็ม →</button></div></div>`;})()}
     <div class="sec"><div class="sectitle">👑 Loyalty</div>
       <div class="grid">
         ${["new","regular","silver","gold","platinum","vip"].map(k=>`<div class="anum"><div class="anumlabel">${levelBadge(k)}</div><div class="anumval">${L.counts[k]||0} คน</div></div>`).join("")}
