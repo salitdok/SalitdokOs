@@ -962,20 +962,42 @@ async function renderOrderDetail(id){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายละเอียดออเดอร์</div></div><div class="empty">กำลังโหลด…</div></div>`;
   document.getElementById("back").onclick=()=>navigate("orders");
   let o;try{o=await fetchOrderDetail(state.s,id);}catch(e){toast(e.message);return;}
+  let fin=null;try{const fr=await safeRest(state.s,`order_financials?select=*&order_id=eq.${id}&limit=1`);fin=fr&&fr[0];}catch(e){}
   const time=new Intl.DateTimeFormat("th-TH",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"}).format(new Date(o.ordered_at));
   const lines=(o.order_items||[]).map(it=>{const ad=(it.order_item_addons||[]).map(a=>`<div class="cmeta" style="margin-left:8px">+ ${esc(a.name)} ${fmtTHB(a.price)}</div>`).join("");return `<div style="margin-bottom:8px"><div class="row"><div class="mname">${esc(it.item_name)} ×${it.quantity}</div><div class="tnum">${fmtTHB(it.unit_price*it.quantity)}</div></div>${ad}</div>`;}).join("");
   const cancelled=o.status==="cancelled";
   let oFood=Number(o.food_cost_snapshot)||0,oPkg=Number(o.packaging_cost_snapshot)||0,oCon=Number(o.consumable_cost_snapshot)||0,oCogs=Number(o.cogs_snapshot)||0;
   if(oCogs<=0){oFood=0;oPkg=0;oCon=0;for(const it of o.order_items||[]){const q=Number(it.quantity)||0,fs=Number(it.food_cost_snapshot)||0,ps=Number(it.pkg_cost_snapshot)||0,leg=Number(it.cost_snapshot)||0;let food=(fs||ps)?fs:leg,pkg=ps;for(const ad of it.order_item_addons||[]){const aq=Number(ad.quantity)||0;food+=((Number(ad.food_cost_snapshot)||0)*aq)/(q||1);pkg+=((Number(ad.pkg_cost_snapshot)||0)*aq)/(q||1);}oFood+=food*q;oPkg+=pkg*q;}oCogs=oFood+oPkg+oCon;}
   const oProfit=Number(o.net_total)-oCogs,hasCost=oCogs>0;
+  const finRow=(l,v,strong)=>`<div class="row" style="margin-top:3px"><span>${l}</span><b class="tnum"${strong?` style="color:${BRAND.up}"`:""}>${v}</b></div>`;
+  let finSection="";
+  if(fin){
+    const pf=Number(fin.platform_fee_before_vat)+Number(fin.platform_fee_vat);
+    const promo=Number(fin.merchant_promo_before_vat)+Number(fin.merchant_promo_vat)+Number(fin.campaign_fee_before_vat)+Number(fin.campaign_fee_vat);
+    const comp=Number(fin.compensation_before_vat)+Number(fin.compensation_vat)+Number(fin.refund_before_vat)+Number(fin.refund_vat)+Number(fin.adjustment_before_vat)+Number(fin.adjustment_vat);
+    finSection=`<div class="blocktitle">การเงินจากแอป (Platform)</div>
+      <div class="block"><div class="costsum">
+        ${finRow("ยอดขายหน้าระบบ",fmtTHB(fin.gross_sales))}
+        ${Number(fin.item_discount)?finRow("− ส่วนลดสินค้า",fmtTHB(fin.item_discount)):""}
+        ${finRow(`− GP แอป (รวม VAT ${r2(Number(fin.platform_fee_vat_rate)*100)}%)`,fmtTHB(pf))}
+        ${promo?finRow("− โปร/แคมเปญ ร้านร่วมจ่าย (รวม VAT)",fmtTHB(promo)):""}
+        ${comp?finRow("− ชดเชย/Refund/Adjust (รวม VAT)",fmtTHB(comp)):""}
+        <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>ยอดรับจริงจากแอป</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(fin.net_receivable)}</b></div>
+      </div><button class="ghostbtn" id="finEdit" style="margin-top:10px">✏️ แก้ไขตัวเลขจากแอป (GP/โปร/ชดเชย)</button></div>`;
+  }else{
+    finSection=`<div class="blocktitle">การเงินจากแอป (Platform)</div><div class="block"><div class="cmeta">ยังไม่มีข้อมูลการเงินของออเดอร์นี้</div><button class="ghostbtn" id="finInit" style="margin-top:10px">สร้างข้อมูลการเงิน (ดึง GP ตามช่องทาง)</button></div>`;
+  }
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายละเอียดออเดอร์</div></div>
     <div class="block"><div class="selbox"><div class="row"><b>${esc(o.customers?o.customers.name:"ไม่ระบุลูกค้า")}</b><div>${srcBadge(o.source)}</div></div><div class="cmeta" style="margin-top:4px">${time}${cancelled?" · <span style='color:#c0392b'>ยกเลิกแล้ว</span>":""}</div><div style="height:10px"></div>${lines}<div class="row" style="margin-top:8px;border-top:1px solid var(--line);padding-top:10px"><b>รวม</b><b class="tnum">${fmtTHB(o.net_total)}</b></div></div></div>
     <div class="blocktitle">ช่องทางการขาย (Order Source)</div>
     <div class="block"><div class="cmeta" style="margin-bottom:8px">แก้ช่องทางของออเดอร์นี้ได้ — มีผลกับกราฟ “ช่องทางการขาย” ในหน้าหลักทันที</div><div class="chips" id="osrcChips">${SRC.map(([k,l])=>`<button class="chip ${k===o.source?"active":""}" data-osrc="${k}">${l}</button>`).join("")}</div></div>
     ${hasCost?`<div class="block"><div class="costsum"><div class="cmeta" style="margin-bottom:6px">ต้นทุน ณ วันที่ขาย (snapshot — ไม่เปลี่ยนตามราคาปัจจุบัน)</div><div class="row"><span>ต้นทุนอาหาร</span><b class="tnum">${fmtTHB(oFood)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์</span><b class="tnum">${fmtTHB(oPkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง</span><b class="tnum">${fmtTHB(oCon)}</b></div><div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(oCogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(oProfit)}</b></div></div></div>`:""}
+    ${finSection}
     <div class="block"><button class="savebtn" id="edit" style="height:50px">แก้ไขออเดอร์</button>${cancelled?`<button class="ghostbtn" id="restore">↩︎ กู้คืนออเดอร์</button>`:`<button class="delbtn" id="cancelo" style="margin-top:10px">ลบออเดอร์ (เปลี่ยนเป็นยกเลิก)</button>`}</div></div>`;
   document.getElementById("back").onclick=()=>navigate("orders");
   document.getElementById("edit").onclick=()=>openEditOrder(o);
+  if(fin){const fe=document.getElementById("finEdit");if(fe)fe.onclick=()=>openOrderFinSheet(o,fin);}
+  else{const fi=document.getElementById("finInit");if(fi)fi.onclick=async()=>{try{await syncOrderFinancials(o.id,o.source,Number(o.net_total));await reloadData();toast("สร้างข้อมูลการเงินแล้ว");renderOrderDetail(o.id);}catch(e){toast(e.message);}};}
   document.querySelectorAll("#osrcChips .chip").forEach(b=>b.onclick=async()=>{const src=b.dataset.osrc;if(src===o.source)return;try{await patch(state.s,`orders?id=eq.${o.id}`,{source:src});await reloadData();toast("เปลี่ยนช่องทางเป็น "+(SRC_MAP[src]||src));renderOrderDetail(o.id);}catch(e){toast(e.message);}});
   if(cancelled)document.getElementById("restore").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"completed"});await reloadData();toast("กู้คืนแล้ว");navigate("orders");}catch(e){toast(e.message);}};
   else document.getElementById("cancelo").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"cancelled"});await reloadData();toast("ยกเลิกออเดอร์แล้ว");navigate("orders");}catch(e){toast(e.message);}};
@@ -1567,6 +1589,56 @@ function syncMenu(){
   if(nbtn){nbtn.disabled=count<=0;nbtn.onclick=()=>saveOrder(true);}
   mergePackagingDefaults();renderPackaging();
 }
+function openOrderFinSheet(o,fin){
+  const g=k=>fin&&fin[k]!=null?Number(fin[k]):0;
+  const line=(key,label,bv,vr)=>`<div class="fhint" style="margin-top:10px">${label}</div>
+    <div class="row" style="gap:8px;margin-top:6px"><input id="${key}_bv" class="nin" style="margin-top:0;flex:2" inputmode="decimal" placeholder="ก่อน VAT" value="${bv||""}"/><input id="${key}_vr" class="nin" style="margin-top:0;flex:1" inputmode="decimal" placeholder="VAT%" value="${vr!=null?r2(vr*100):""}"/></div>`;
+  openSheet("แก้ไขตัวเลขจากแอป",`
+    <div class="block"><div class="row"><span>ยอดขายหน้าระบบ</span><b class="tnum">${fmtTHB(g("gross_sales"))}</b></div></div>
+    <div class="fhint" style="margin-top:10px">ส่วนลดสินค้า (item discount)</div><input id="f_item_discount" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="0" value="${g("item_discount")||""}"/>
+    ${line("f_pf","GP / Platform Fee",g("platform_fee_before_vat"),g("platform_fee_vat_rate"))}
+    ${line("f_mp","Merchant Promo (ร้านร่วมจ่าย)",g("merchant_promo_before_vat"),g("merchant_promo_vat_rate"))}
+    ${line("f_cf","Campaign Fee",g("campaign_fee_before_vat"),g("campaign_fee_vat_rate"))}
+    ${line("f_cp","Compensation (ชดเชย)",g("compensation_before_vat"),g("compensation_vat_rate"))}
+    ${line("f_rf","Refund",g("refund_before_vat"),g("refund_vat_rate"))}
+    ${line("f_aj","Adjustment",g("adjustment_before_vat"),g("adjustment_vat_rate"))}
+    <div class="block" style="margin-top:12px"><div class="row"><span>รวมค่าใช้จ่ายจากแอป (รวม VAT)</span><b class="tnum" id="fPrevApp" style="color:#c0392b">฿0</b></div><div class="row" style="margin-top:4px"><span>ยอดรับจริงจากแอป</span><b class="tnum" id="fPrevNet" style="color:${BRAND.up}">฿0</b></div></div>
+    <button class="savebtn" id="fSave" style="margin-top:14px">บันทึกตัวเลข</button>`);
+  const num=id=>parseFloat(val(id))||0;
+  const calc=()=>{
+    const inc=(bv,vr)=>{const b=num(bv),r=num(vr)/100;return b+r2(b*r);};
+    const app=inc("f_pf_bv","f_pf_vr")+inc("f_mp_bv","f_mp_vr")+inc("f_cf_bv","f_cf_vr")+inc("f_cp_bv","f_cp_vr")+inc("f_rf_bv","f_rf_vr")+inc("f_aj_bv","f_aj_vr");
+    const net=g("gross_sales")-num("f_item_discount")-app;
+    document.getElementById("fPrevApp").textContent=fmtTHB(app);
+    document.getElementById("fPrevNet").textContent=fmtTHB(net);
+  };
+  ["f_item_discount","f_pf_bv","f_pf_vr","f_mp_bv","f_mp_vr","f_cf_bv","f_cf_vr","f_cp_bv","f_cp_vr","f_rf_bv","f_rf_vr","f_aj_bv","f_aj_vr"].forEach(id=>{const el=document.getElementById(id);if(el)el.oninput=calc;});calc();
+  document.getElementById("fSave").onclick=async()=>{
+    const body={
+      item_discount:num("f_item_discount"),
+      platform_fee_before_vat:num("f_pf_bv"),platform_fee_vat_rate:num("f_pf_vr")/100,
+      merchant_promo_before_vat:num("f_mp_bv"),merchant_promo_vat_rate:num("f_mp_vr")/100,
+      campaign_fee_before_vat:num("f_cf_bv"),campaign_fee_vat_rate:num("f_cf_vr")/100,
+      compensation_before_vat:num("f_cp_bv"),compensation_vat_rate:num("f_cp_vr")/100,
+      refund_before_vat:num("f_rf_bv"),refund_vat_rate:num("f_rf_vr")/100,
+      adjustment_before_vat:num("f_aj_bv"),adjustment_vat_rate:num("f_aj_vr")/100
+    };
+    const btn=document.getElementById("fSave");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{await patch(state.s,`order_financials?order_id=eq.${o.id}`,body);await reloadData();closeSheet();toast("บันทึกแล้ว");renderOrderDetail(o.id);}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึกตัวเลข";}
+  };
+}
+async function syncOrderFinancials(oid,source,gross){
+  const store_id=state.data.store.id;
+  const ex=await safeRest(state.s,`order_financials?select=order_id,platform_fee_rate&order_id=eq.${oid}&limit=1`);
+  if(ex&&ex.length){
+    const rate=Number(ex[0].platform_fee_rate)||0;
+    await patch(state.s,`order_financials?order_id=eq.${oid}`,{source,gross_sales:gross,platform_fee_before_vat:r2(gross*rate)});
+  }else{
+    const fee=feeForSource(source),rate=fee?Number(fee.fee_rate):0,vat=fee?Number(fee.fee_vat_rate):0;
+    await post(state.s,"order_financials",{order_id:oid,store_id,source,gross_sales:gross,platform_fee_rate:rate,platform_fee_vat_rate:vat,platform_fee_before_vat:r2(gross*rate)},"return=minimal");
+  }
+}
 async function saveOrder(andNext){
   const entries=Object.entries(draft.cart).filter(([id,e])=>e.qty>0);
   if(!entries.length){toast("ยังไม่ได้เลือกเมนู");return;}
@@ -1603,6 +1675,7 @@ async function saveOrder(andNext){
     if(draft.editId)await del(state.s,`order_packaging?order_id=eq.${oid}`);
     const im=ingMap();const pkgRows=(draft.packaging||[]).filter(p=>Number(p.qty)>0).map(p=>{const it=im[p.item_id],k=(it&&it.kind==="packaging")?"packaging":"supply";return {store_id,order_id:oid,inventory_item_id:p.item_id,kind:k,qty:Number(p.qty),unit_cost_snapshot:r2(ingCostPerUnit(p.item_id,saleMonth))};});
     if(pkgRows.length)await post(state.s,"order_packaging",pkgRows,"return=minimal");
+    try{await syncOrderFinancials(oid,draft.source,subtotal);}catch(e){/* การเงินไม่ควรทำให้บันทึกออเดอร์ล้ม */}
     await reloadData();
     if(draft.editId){toast("แก้ไขออเดอร์แล้ว");navigate("orders");return;}
     toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));
