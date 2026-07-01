@@ -893,6 +893,10 @@ function renderFinance(){
     <div class="block">${accts.length?accts.map(a=>{const b=acctBal(a.id);return `<div class="mmrow"><button class="mmmain" data-acc="${a.id}"><div class="mmname">${esc(a.name)} <span class="badge" style="font-size:10px;background:#2563EB22;color:#2563EB">${CASH_TYPE[a.type]||a.type}</span></div><div class="mmsub">คงเหลือ ${b!=null?fmtTHB(b):fmtTHB(a.opening_balance)}</div></button><span class="chev">›</span></div>`;}).join(""):`<div class="cmeta">ยังไม่มีบัญชี</div>`}<button class="ghostbtn" id="addAcc" style="margin-top:10px">＋ บัญชีเงิน</button></div>
     <div class="blocktitle">หมวดค่าใช้จ่าย</div>
     <div class="block">${cats.length?cats.map(c=>`<div class="mmrow"><button class="mmmain" data-cat="${c.id}"><div class="mmname">${esc(c.name)} <span class="badge" style="font-size:10px;background:${c.type==="fixed"?"#7C3AED22;color:#7C3AED":"#0E9F6E22;color:#0E9F6E"}">${EXP_TYPE[c.type]||c.type}</span>${c.is_cogs?` <span class="badge" style="font-size:10px;background:#c0392b22;color:#c0392b">COGS</span>`:""}</div></button><span class="chev">›</span></div>`).join(""):`<div class="cmeta">ยังไม่มีหมวด — เพิ่มเช่น ค่าเช่า, เงินเดือน, ค่าไฟ, ค่าแก๊ส</div>`}<button class="ghostbtn" id="addCat" style="margin-top:10px">＋ หมวดค่าใช้จ่าย</button></div>
+    <div class="blocktitle">ค่าโฆษณาแอป (Ads)</div>
+    <div class="block">${(state.data.adCosts||[]).length?(state.data.adCosts||[]).slice(0,15).map(a=>`<div class="mmrow"><button class="mmmain" data-ad="${a.id}"><div class="mmname">${SRC_MAP[a.source]||a.source}${a.campaign?` · ${esc(a.campaign)}`:""} <b class="tnum" style="float:right">${fmtTHB(a.ad_cost_including_vat)}</b></div><div class="mmsub">${a.period_start}–${a.period_end} · ก่อน VAT ${fmtTHB(a.ad_cost_before_vat)} + VAT ${fmtTHB(a.ad_vat_amount)}</div></button></div>`).join(""):`<div class="cmeta">ยังไม่มีค่าโฆษณา — เพิ่มยอดที่แอปสรุปมา (ราย period/แคมเปญ)</div>`}<button class="ghostbtn" id="addAd" style="margin-top:10px">＋ ค่าโฆษณาแอป</button></div>
+    <div class="blocktitle">ค่าใช้จ่ายประจำ (Template)</div>
+    <div class="block">${(state.data.recurring||[]).length?(state.data.recurring||[]).map(rc=>{const c=catById(rc.category_id);return `<div class="mmrow"><button class="mmmain" data-rec="${rc.id}"><div class="mmname">${esc(rc.name)} <b class="tnum" style="float:right">${fmtTHB(rc.amount)}</b></div><div class="mmsub">${c?esc(c.name):"(ไม่ระบุหมวด)"}${rc.day_of_month?` · ทุกวันที่ ${rc.day_of_month}`:""}${rc.active===false?" · ปิดอยู่":""}</div></button></div>`;}).join(""):`<div class="cmeta">ยังไม่มี — เพิ่มเช่น ค่าเช่า/เงินเดือน/ค่าเน็ต ที่จ่ายทุกเดือน</div>`}<button class="ghostbtn" id="addRec" style="margin-top:10px">＋ ค่าใช้จ่ายประจำ</button>${(state.data.recurring||[]).some(x=>x.active!==false)?`<button class="ghostbtn" id="genRec" style="margin-top:8px">📥 ลงค่าใช้จ่ายประจำของเดือนนี้</button>`:""}</div>
     <div class="blocktitle">ค่าใช้จ่ายล่าสุด</div>
     <div class="block">${exps.length?exps.slice(0,20).map(e=>{const c=catById(e.category_id);return `<div class="mmrow"><button class="mmmain" data-exp="${e.id}"><div class="mmname">${c?esc(c.name):"(ไม่ระบุหมวด)"} <b class="tnum" style="float:right">${fmtTHB(e.amount)}</b></div><div class="mmsub">${bkkDate(new Date(e.paid_at))}${e.source?` · ${SRC_MAP[e.source]||e.source}`:""}${e.note?` · ${esc(e.note)}`:""}</div></button></div>`;}).join(""):`<div class="cmeta">ยังไม่มีค่าใช้จ่าย</div>`}</div>
     <div style="height:24px"></div></div>`;
@@ -904,6 +908,92 @@ function renderFinance(){
   document.querySelectorAll("[data-acc]").forEach(b=>b.onclick=()=>openAccountSheet(acctById(b.dataset.acc)));
   document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>openCatSheet(catById(b.dataset.cat)));
   document.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>{const e=(state.data.expenses||[]).find(x=>x.id===b.dataset.exp);if(e)openExpenseSheet(e);});
+  {const b=document.getElementById("addAd");if(b)b.onclick=()=>openAdSheet();}
+  document.querySelectorAll("[data-ad]").forEach(b=>b.onclick=()=>{const a=(state.data.adCosts||[]).find(x=>x.id===b.dataset.ad);if(a)openAdSheet(a);});
+  {const b=document.getElementById("addRec");if(b)b.onclick=()=>openRecurringSheet();}
+  document.querySelectorAll("[data-rec]").forEach(b=>b.onclick=()=>{const rc=(state.data.recurring||[]).find(x=>x.id===b.dataset.rec);if(rc)openRecurringSheet(rc);});
+  {const b=document.getElementById("genRec");if(b)b.onclick=generateRecurringThisMonth;}
+}
+function openAdSheet(ad){
+  let src=ad?ad.source:"grab";const today=bkkDate(new Date());
+  openSheet(ad?"แก้ไขค่าโฆษณา":"ค่าโฆษณาแอป",`
+    <div class="fhint">ช่องทาง</div><div class="chips" id="adSrc" style="margin-top:6px">${SRC.filter(x=>x[0]!=="manual").map(([k,l])=>`<button class="chip sm ${src===k?"active":""}" data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="fhint" style="margin-top:10px">แคมเปญ (ถ้ามี)</div><input id="adCamp" class="nin" style="margin-top:6px" placeholder="เช่น โปรส่งฟรี ก.ค." value="${ad&&ad.campaign?esc(ad.campaign):""}"/>
+    <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">ตั้งแต่วันที่</div><input id="adFrom" type="date" class="nin" style="margin-top:6px" value="${ad?ad.period_start:today}"/></div><div style="flex:1"><div class="fhint">ถึงวันที่</div><input id="adTo" type="date" class="nin" style="margin-top:6px" value="${ad?ad.period_end:today}"/></div></div>
+    <div class="fhint" style="margin-top:10px">ค่าโฆษณา (ก่อน VAT)</div><input id="adBv" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 500" value="${ad?ad.ad_cost_before_vat:""}"/>
+    <div class="fhint" style="margin-top:10px">VAT % (ไม่มีใส่ 0)</div><input id="adVr" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 7" value="${ad?r2(ad.ad_vat_rate*100):""}"/>
+    <div class="block" style="margin-top:10px"><div class="row"><span>รวม VAT</span><b class="tnum" id="adPrev">฿0</b></div></div>
+    <input id="adNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ (ถ้ามี)" value="${ad&&ad.note?esc(ad.note):""}"/>
+    <button class="savebtn" id="adGo" style="margin-top:14px">${ad?"บันทึก":"เพิ่มค่าโฆษณา"}</button>
+    ${ad?`<button class="ghostbtn" id="adDel" style="margin-top:8px;color:#c0392b">ลบรายการ</button>`:""}`);
+  document.querySelectorAll("#adSrc .chip").forEach(c=>c.onclick=()=>{src=c.dataset.s;document.querySelectorAll("#adSrc .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  const prev=()=>{const bv=parseFloat(val("adBv"))||0,vr=(parseFloat(val("adVr"))||0)/100;document.getElementById("adPrev").textContent=fmtTHB(bv+r2(bv*vr));};
+  ["adBv","adVr"].forEach(id=>{const el=document.getElementById(id);if(el)el.oninput=prev;});prev();
+  document.getElementById("adGo").onclick=async()=>{
+    const bv=parseFloat(val("adBv"));if(isNaN(bv)||bv<0){toast("ใส่ค่าโฆษณา");return;}
+    const pf=val("adFrom")||today,pt=val("adTo")||today;if(pt<pf){toast("ช่วงวันที่ไม่ถูกต้อง");return;}
+    const body={store_id:state.data.store.id,source:src,campaign:val("adCamp").trim()||null,period_start:pf,period_end:pt,ad_cost_before_vat:bv,ad_vat_rate:(parseFloat(val("adVr"))||0)/100,note:val("adNote").trim()||null};
+    const btn=document.getElementById("adGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{if(ad)await patch(state.s,`platform_ad_costs?id=eq.${ad.id}`,body);else await post(state.s,"platform_ad_costs",body,"return=minimal");await reloadData();closeSheet();toast("บันทึกแล้ว");renderFinance();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent=ad?"บันทึก":"เพิ่มค่าโฆษณา";}
+  };
+  if(ad){document.getElementById("adDel").onclick=async()=>{try{await del(state.s,`platform_ad_costs?id=eq.${ad.id}`);await reloadData();closeSheet();toast("ลบแล้ว");renderFinance();}catch(e){toast(e.message);}};}
+}
+function openRecurringSheet(rc){
+  const cats=state.data.expenseCats||[],accts=state.data.cashAccounts||[];
+  if(!cats.length){openSheet("ค่าใช้จ่ายประจำ",`<div class="empty">เพิ่มหมวดค่าใช้จ่ายก่อน</div>`);return;}
+  let cid=rc?rc.category_id:cats[0].id,aid=rc?(rc.cash_account_id||""):"",src=rc?(rc.source||""):"",active=rc?rc.active!==false:true;
+  openSheet(rc?"แก้ไขค่าใช้จ่ายประจำ":"เพิ่มค่าใช้จ่ายประจำ",`
+    <div class="fhint">ชื่อ</div><input id="rcName" class="nin" style="margin-top:6px" placeholder="เช่น ค่าเช่าร้าน, เงินเดือนพนักงาน" value="${rc?esc(rc.name):""}"/>
+    <div class="fhint" style="margin-top:10px">หมวด</div><div class="chips" id="rcCat" style="margin-top:6px">${cats.map(c=>`<button class="chip sm ${c.id===cid?"active":""}" data-c="${c.id}">${esc(c.name)}</button>`).join("")}</div>
+    <div class="fhint" style="margin-top:10px">จำนวนเงิน/เดือน</div><input id="rcAmt" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="เช่น 5000" value="${rc?rc.amount:""}"/>
+    <div class="fhint" style="margin-top:10px">จ่ายทุกวันที่ (1–31, ไม่บังคับ)</div><input id="rcDom" class="nin" inputmode="numeric" style="margin-top:6px" placeholder="เช่น 1" value="${rc&&rc.day_of_month?rc.day_of_month:""}"/>
+    ${accts.length?`<div class="fhint" style="margin-top:10px">จ่ายจากบัญชี (ไม่บังคับ)</div><div class="chips" id="rcAcc" style="margin-top:6px"><button class="chip sm ${aid===""?"active":""}" data-a="">ไม่ระบุ</button>${accts.map(a=>`<button class="chip sm ${aid===a.id?"active":""}" data-a="${a.id}">${esc(a.name)}</button>`).join("")}</div>`:""}
+    <label style="display:flex;align-items:center;gap:10px;margin-top:12px"><input type="checkbox" id="rcActive" ${active?"checked":""}/> <span>เปิดใช้งาน (รวมตอนลงประจำเดือน)</span></label>
+    <button class="savebtn" id="rcGo" style="margin-top:14px">${rc?"บันทึก":"เพิ่ม"}</button>
+    ${rc?`<button class="ghostbtn" id="rcDel" style="margin-top:8px;color:#c0392b">ลบ</button>`:""}`);
+  document.querySelectorAll("#rcCat .chip").forEach(c=>c.onclick=()=>{cid=c.dataset.c;document.querySelectorAll("#rcCat .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  document.querySelectorAll("#rcAcc .chip").forEach(c=>c.onclick=()=>{aid=c.dataset.a;document.querySelectorAll("#rcAcc .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  document.getElementById("rcGo").onclick=async()=>{
+    const name=val("rcName").trim();if(!name){toast("ใส่ชื่อ");return;}
+    const amount=parseFloat(val("rcAmt"));if(isNaN(amount)||amount<=0){toast("ใส่จำนวนเงิน");return;}
+    const dom=val("rcDom").trim()?parseInt(val("rcDom")):null;const isActive=document.getElementById("rcActive").checked;
+    const body={store_id:state.data.store.id,category_id:cid||null,cash_account_id:aid||null,name,amount,source:src||null,day_of_month:(dom&&dom>=1&&dom<=31)?dom:null,active:isActive};
+    const btn=document.getElementById("rcGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{if(rc)await patch(state.s,`recurring_expenses?id=eq.${rc.id}`,body);else await post(state.s,"recurring_expenses",body,"return=minimal");await reloadData();closeSheet();toast("บันทึกแล้ว");renderFinance();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent=rc?"บันทึก":"เพิ่ม";}
+  };
+  if(rc){document.getElementById("rcDel").onclick=async()=>{try{await del(state.s,`recurring_expenses?id=eq.${rc.id}`);await reloadData();closeSheet();toast("ลบแล้ว");renderFinance();}catch(e){toast(e.message);}};}
+}
+async function generateRecurringThisMonth(){
+  const list=(state.data.recurring||[]).filter(x=>x.active!==false);
+  if(!list.length){toast("ไม่มีค่าใช้จ่ายประจำ");return;}
+  const now=new Date(),ym=bkkDate(now).slice(0,7);
+  openSheet("ลงค่าใช้จ่ายประจำ · "+ym,`
+    <div class="cmeta" style="margin-bottom:10px">จะสร้างค่าใช้จ่ายของเดือนนี้จาก template ${list.length} รายการ (ข้ามรายการที่ลงไปแล้วในเดือนนี้)</div>
+    <div class="block">${list.map(rc=>{const c=catById(rc.category_id);return `<div class="row" style="margin-top:4px"><span>${esc(rc.name)} <span class="cmeta">${c?esc(c.name):""}</span></span><b class="tnum">${fmtTHB(rc.amount)}</b></div>`;}).join("")}</div>
+    <button class="savebtn" id="genGo" style="margin-top:14px">ยืนยันลงค่าใช้จ่าย ${list.length} รายการ</button>`);
+  document.getElementById("genGo").onclick=async()=>{
+    const btn=document.getElementById("genGo");btn.disabled=true;btn.textContent="กำลังลง…";
+    try{
+      const existing=await safeRest(state.s,`expenses?select=note,category_id&store_id=eq.${state.data.store.id}&paid_at=gte.${ym}-01T00:00:00%2B07:00&note=like.*[ประจำ]*`);
+      const done=new Set((existing||[]).map(e=>e.note));
+      const dom=n=>{const d=String(n).padStart(2,"0");return `${ym}-${d}`;};
+      const rows=[];const cms=[];let skip=0;
+      for(const rc of list){
+        const tag=`[ประจำ] ${rc.name}`;
+        if(done.has(tag)){skip++;continue;}
+        const day=(rc.day_of_month&&rc.day_of_month>=1&&rc.day_of_month<=28)?dom(rc.day_of_month):`${ym}-01`;
+        const paid_at=new Date(day+"T12:00:00+07:00").toISOString();
+        rows.push({store_id:state.data.store.id,category_id:rc.category_id||null,cash_account_id:rc.cash_account_id||null,amount:rc.amount,source:rc.source||null,paid_at,note:tag});
+      }
+      if(rows.length){const rs=await post(state.s,"expenses",rows,"return=representation");
+        for(let i=0;i<rs.length;i++){const e=rs[i],rc=list.find(x=>`[ประจำ] ${x.name}`===e.note);if(rc&&rc.cash_account_id)cms.push({store_id:state.data.store.id,account_id:rc.cash_account_id,direction:"out",amount:e.amount,kind:"expense",ref_type:"expense",ref_id:e.id,occurred_at:e.paid_at,note:e.note});}
+        if(cms.length)await post(state.s,"cash_movements",cms,"return=minimal");
+      }
+      await reloadData();closeSheet();toast(`ลงแล้ว ${rows.length} รายการ${skip?` · ข้าม ${skip} (ลงแล้ว)`:""}`);renderFinance();
+    }catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันลงค่าใช้จ่าย";}
+  };
 }
 function openFeeSheet(src){
   const f=feeForSource(src),l=(SRC.find(x=>x[0]===src)||[src,src])[1],today=bkkDate(new Date());
