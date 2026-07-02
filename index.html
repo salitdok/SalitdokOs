@@ -213,6 +213,7 @@ const BULK={g:[["g",1],["kg",1000]],ml:[["ml",1],["ลิตร",1000]]};
 const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items",menuFilter:null,aiActions:[]};
 let draft=null, editingMenu=null, editingAddon=null, editingRecipe=[], editingIng=null, recipeCtx={priceId:"miPrice",sumId:"recipeSum"};
 const bkkDate=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok"}).format(d);
+const bkkDateTime=d=>new Intl.DateTimeFormat("th-TH",{timeZone:"Asia/Bangkok",day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"}).format(d);
 const monthOf=d=>bkkDate(d).slice(0,7);
 const fmtTHB=n=>"฿"+Math.round(n||0).toLocaleString("th-TH");
 const fmt2=n=>(Math.round((n||0)*100)/100).toLocaleString("th-TH",{maximumFractionDigits:2});
@@ -555,9 +556,9 @@ async function renderReports(preset){
   const presets=[["today","วันนี้"],["7d","7 วัน"],["month","เดือนนี้"],["custom","กำหนดเอง"]];
   const chips=presets.map(([k,l])=>`<button class="chip ${r.preset===k?"active":""}" data-rp="${k}">${l}</button>`).join("");
   const customBar=r.preset==="custom"?`<div class="block" style="display:flex;gap:8px;align-items:center"><input type="date" id="rFrom" class="nin" style="margin-top:0" value="${esc(r.from)}"><span>ถึง</span><input type="date" id="rTo" class="nin" style="margin-top:0" value="${esc(r.to)}"><button class="chip active" id="rGo">ดู</button></div>`:"";
-  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":tab==="crm"?"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย":tab==="pl"?"กำไรสุทธิ = ยอดขาย − ค่าแอป − COGS − ค่าใช้จ่าย":"มูลค่าของเสีย/ทิ้ง จาก stock_movements (kind=waste)";
+  const note=tab==="sales"?"ข้อมูลยอดขาย/ต้นทุนจาก snapshot (Order Source)":tab==="crm"?"แหล่งที่มาลูกค้า (Customer Source) — คนละมิติกับช่องทางขาย":tab==="pl"?"กำไรสุทธิ = ยอดขาย − ค่าแอป − COGS − ค่าใช้จ่าย":tab==="adj"?"การปรับสต็อก/ของเสีย ทุกวัตถุดิบ (stock_movements)":"มูลค่าของเสีย/ทิ้ง จาก stock_movements (kind=waste)";
   app.innerHTML=shell("reports",`<div class="phead"><div class="ptitle">รายงาน</div><button class="iconbtn" id="toDash">‹</button></div>
-    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="pl"?"on":""}" data-rt="pl">กำไรสุทธิ</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button><button class="segbtn ${tab==="waste"?"on":""}" data-rt="waste">ของเสีย</button></div>
+    <div class="seg"><button class="segbtn ${tab==="sales"?"on":""}" data-rt="sales">ยอดขาย</button><button class="segbtn ${tab==="pl"?"on":""}" data-rt="pl">กำไรสุทธิ</button><button class="segbtn ${tab==="crm"?"on":""}" data-rt="crm">ช่องทางลูกค้า</button><button class="segbtn ${tab==="waste"?"on":""}" data-rt="waste">ของเสีย</button><button class="segbtn ${tab==="adj"?"on":""}" data-rt="adj">ปรับสต็อก</button></div>
     <div class="block"><div class="chips" id="rpChips">${chips}</div></div>
     ${customBar}
     <div class="cmeta" style="padding:0 20px 6px">ช่วง ${esc(r.from)} ถึง ${esc(r.to)} · ${note}</div>
@@ -570,6 +571,7 @@ async function renderReports(preset){
   if(tab==="crm"){fillCRMReport(r);return;}
   if(tab==="waste"){fillWasteReport(r);return;}
   if(tab==="pl"){fillPLReport(r);return;}
+  if(tab==="adj"){fillAdjReport(r);return;}
   try{
     const {sales,cogs}=await fetchReport(r.from,r.to);
     const totSales=sales.reduce((a,x)=>a+Number(x.sales||0),0),totOrders=sales.reduce((a,x)=>a+Number(x.orders_count||0),0);
@@ -758,6 +760,29 @@ async function fillWasteReport(r){
       </div></div>
       ${days.length?days.map(d=>`<div class="sec"><div class="sectitle">${d} · รวม ${fmtTHB(byDay[d].total)}</div><div class="block">${byDay[d].items.map(x=>`<div style="margin-bottom:9px"><div class="row"><span>${esc(x.name)} <span class="cmeta">×${fmt2(x.qty)} ${esc(x.unit)}</span></span><b class="tnum" style="color:#c0392b">${fmtTHB(x.v)}</b></div><div class="cmeta">฿${fmt2(x.cpu)}/${esc(x.unit)}${x.note?` · ${esc(x.note)}`:""}</div></div>`).join("")}</div></div>`).join(""):`<div class="empty">ไม่มีของเสียในช่วงนี้ 🎉</div>`}
       <div class="cmeta" style="margin-top:8px">มูลค่าคิดจากต้นทุน ณ วันที่ทิ้ง (snapshot) — รายการเก่าก่อนมี snapshot ใช้ต้นทุนเฉลี่ยแทน</div><div style="height:20px"></div>`;
+  }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
+}
+async function fillAdjReport(r){
+  const body=document.getElementById("repBody");if(!body)return;
+  body.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
+  try{
+    const sid=state.data.store.id;
+    const start=new Date(r.from+"T00:00:00+07:00").toISOString(),end=new Date(r.to+"T23:59:59.999+07:00").toISOString();
+    const rows=await safeRest(state.s,`stock_movements?select=inventory_item_id,qty_delta,kind,unit_cost,occurred_at,note&store_id=eq.${sid}&kind=in.(adjust,waste)&occurred_at=gte.${start}&occurred_at=lte.${end}&order=occurred_at.desc`);
+    const sm=stockMap(),im=ingMap();
+    let adjCount=0,wasteCount=0,wasteVal=0,adjUp=0,adjDown=0;
+    const items=rows.map(m=>{const it=im[m.inventory_item_id],st=sm[m.inventory_item_id];const d=Number(m.qty_delta)||0;
+      const cpu=(m.unit_cost!=null&&Number(m.unit_cost)>0)?Number(m.unit_cost):(st?Number(st.avg_cost)||0:0);
+      const v=Math.abs(d)*cpu;
+      if(m.kind==="waste"){wasteCount++;wasteVal+=v;}else{adjCount++;if(d>=0)adjUp+=d;else adjDown+=Math.abs(d);}
+      return {name:it?it.name:"?",unit:it?it.base_unit:"",kind:m.kind,d,v,cpu,note:m.note,at:m.occurred_at};});
+    const K={adjust:["ปรับสต็อก","#2563EB"],waste:["ของเสีย","#c0392b"]};
+    body.innerHTML=`<div class="sec"><div class="grid">
+        <div class="anum"><div class="anumlabel">ปรับสต็อก</div><div class="anumval tnum" style="font-size:17px">${adjCount} ครั้ง</div><div class="anumlabel" style="margin-top:2px">+${fmt2(adjUp)} / −${fmt2(adjDown)}</div></div>
+        <div class="anum"><div class="anumlabel">ของเสีย</div><div class="anumval tnum" style="font-size:17px;color:#c0392b">${fmtTHB(wasteVal)}</div><div class="anumlabel" style="margin-top:2px">${wasteCount} ครั้ง</div></div>
+      </div></div>
+      ${items.length?`<div class="sec"><div class="sectitle">รายการปรับ (${items.length})</div><div class="block">${items.map(x=>{const k=K[x.kind]||[x.kind,"#666"],sign=x.d>0?"+":"";return `<div style="padding:9px 0;border-bottom:1px solid var(--line)"><div class="row"><span><span class="badge" style="background:${k[1]}22;color:${k[1]};font-size:10px">${k[0]}</span> ${esc(x.name)}</span><b class="tnum" style="color:${x.d<0?"#c0392b":"#0E9F6E"}">${sign}${fmt2(x.d)} ${esc(x.unit)}</b></div><div class="cmeta" style="margin-top:3px">${bkkDateTime(new Date(x.at))}${x.note?` · <b style="color:#555">${esc(x.note)}</b>`:" · (ไม่ระบุเหตุผล)"}${x.kind==="waste"?` · มูลค่า ฿${fmt2(x.v)}`:""}</div></div>`;}).join("")}</div></div>`:`<div class="empty">ไม่มีการปรับสต็อก/ของเสียในช่วงนี้</div>`}
+      <div class="cmeta" style="margin-top:8px">รวมทั้งการนับปรับยอด (adjust) และของเสีย (waste) — ไม่รวมการขายออก/ซื้อเข้า</div><div style="height:20px"></div>`;
   }catch(e){body.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 function fillCRMReport(r){
@@ -1726,7 +1751,7 @@ async function openStockHistory(ing){
     const el=document.getElementById("sheetBody");if(!el)return;
     if(!withBal.length){el.innerHTML=`<div class="empty">ยังไม่มีการเคลื่อนไหว</div>`;return;}
     el.innerHTML=`<div class="block" style="margin-bottom:8px"><div class="row"><span class="cmeta">คงเหลือล่าสุด</span><b class="tnum">${fmt2(bal)} ${esc(ing.base_unit)}</b></div></div>
-      <div class="block">${withBal.map(m=>{const k=SM_KIND[m.kind]||[m.kind,"#666"],d=Number(m.qty_delta)||0,sign=d>0?"+":"";return `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><span><span class="badge" style="background:${k[1]}22;color:${k[1]};font-size:10px">${k[0]}</span> <span class="cmeta">${bkkDate(new Date(m.occurred_at))}</span></span><b class="tnum" style="color:${d<0?"#c0392b":"#0E9F6E"}">${sign}${fmt2(d)}</b></div><div class="cmeta" style="margin-top:3px">คงเหลือ ${fmt2(m.bal)} ${esc(ing.base_unit)} · ${SM_REF[m.ref_type]||m.ref_type||"-"}${m.note?` · ${esc(m.note)}`:""}${(m.kind==="waste"&&m.unit_cost)?` · มูลค่า ฿${fmt2(Math.abs(d)*Number(m.unit_cost))}`:""}</div></div>`;}).join("")}</div><div style="height:10px"></div>`;
+      <div class="block">${withBal.map(m=>{const k=SM_KIND[m.kind]||[m.kind,"#666"],d=Number(m.qty_delta)||0,sign=d>0?"+":"";return `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><span><span class="badge" style="background:${k[1]}22;color:${k[1]};font-size:10px">${k[0]}</span> <span class="cmeta">${bkkDateTime(new Date(m.occurred_at))}</span></span><b class="tnum" style="color:${d<0?"#c0392b":"#0E9F6E"}">${sign}${fmt2(d)}</b></div><div class="cmeta" style="margin-top:3px">คงเหลือ ${fmt2(m.bal)} ${esc(ing.base_unit)} · ${SM_REF[m.ref_type]||m.ref_type||"-"}${m.note?` · <b style="color:#555">${esc(m.note)}</b>`:""}${(m.kind==="waste"&&m.unit_cost)?` · มูลค่า ฿${fmt2(Math.abs(d)*Number(m.unit_cost))}`:""}</div></div>`;}).join("")}</div><div style="height:10px"></div>`;
   }catch(e){const el=document.getElementById("sheetBody");if(el)el.innerHTML=`<div class="empty">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`;}
 }
 function adjustStockSheet(ing,mode){
@@ -1736,11 +1761,14 @@ function adjustStockSheet(ing,mode){
     <div class="block"><div class="row"><span>คงเหลือปัจจุบัน</span><b class="tnum">${fmt2(cur)} ${esc(ing.base_unit)}</b></div>${isWaste?`<div class="row" style="margin-top:4px"><span class="cmeta">ต้นทุนเฉลี่ยตอนนี้</span><b class="tnum">฿${fmt2(unitCostNow)}/${esc(ing.base_unit)}</b></div>`:""}</div>
     <div class="fhint" style="margin-top:10px">${isWaste?`จำนวนที่เสีย/ทิ้ง (${esc(ing.base_unit)})`:`ยอดที่นับได้จริง (${esc(ing.base_unit)})`}</div>
     <div style="margin-top:6px">${stepperHTML("adjQty","",{step:1,min:0,placeholder:isWaste?"เช่น 5":fmt2(cur)})}</div>
-    <input id="adjNote" class="nin" placeholder="หมายเหตุ${isWaste?" เช่น ไข่แตก":""} (ถ้ามี)"/>
+    <div class="fhint" style="margin-top:12px">เหตุผล / หมายเหตุ (ไม่บังคับ)</div>
+    <div class="chips" id="adjRsn" style="margin-top:6px">${(isWaste?["ของเสีย","หมดอายุ","ตกแตก","แบ่งใช้","แถม","อื่น ๆ"]:["นับจริง","ของเสีย","หมดอายุ","แบ่งใช้","แถม","อื่น ๆ"]).map(r=>`<button type="button" class="chip sm" data-rsn="${esc(r)}">${esc(r)}</button>`).join("")}</div>
+    <input id="adjNote" class="nin" style="margin-top:8px" placeholder="พิมพ์เพิ่มเองได้ เช่น ${isWaste?"ไข่แตก 3 ฟอง":"นับจริงพบขาด"}"/>
     ${isWaste?`<div class="block" style="margin-top:8px"><div class="row"><span>มูลค่าของเสีย ≈</span><b class="tnum" id="wastePrev" style="color:#c0392b">฿0.00</b></div></div>`:""}
     <div class="cmeta" style="margin-top:8px">${isWaste?"บันทึกเป็นการตัดสต็อกออก (ของเสีย) + เก็บ snapshot ต้นทุน ณ วันที่ทิ้ง":"ระบบจะปรับยอดให้เท่ากับที่นับได้ โดยบันทึกส่วนต่างเป็นการปรับสต็อก — ใช้ตั้งยอดตั้งต้น/แก้ติดลบได้"}</div>
     <button class="savebtn" id="adjGo" style="margin-top:14px">${isWaste?"บันทึกของเสีย":"ปรับยอด"}</button>`);
   if(isWaste){const q=document.getElementById("adjQty"),pv=document.getElementById("wastePrev");if(q&&pv)q.oninput=()=>{const v=Math.abs(parseFloat(q.value)||0);pv.textContent=fmtTHB(v*unitCostNow);};}
+  document.querySelectorAll("#adjRsn .chip").forEach(c=>c.onclick=()=>{const n=document.getElementById("adjNote"),r=c.dataset.rsn;document.querySelectorAll("#adjRsn .chip").forEach(x=>x.classList.toggle("active",x===c));if(r==="อื่น ๆ"){n.value="";n.focus();}else{n.value=r;}});
   document.getElementById("adjGo").onclick=async()=>{
     const v=parseFloat(val("adjQty"));if(isNaN(v)){toast("ใส่จำนวน");return;}
     const note=val("adjNote").trim()||null;let delta,kind;
