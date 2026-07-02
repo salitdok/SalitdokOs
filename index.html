@@ -1321,19 +1321,22 @@ function renderPackagingDefaultEdit(def){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isNew?"เพิ่มค่าเริ่มต้น":"แก้ไขค่าเริ่มต้น"}</div></div>
     <div class="block">
       <div class="fhint">รายการ (บรรจุภัณฑ์/วัสดุสิ้นเปลือง)</div>
-      <select id="dfItem" class="nin" style="margin-top:6px">${items.map(i=>`<option value="${i.id}" ${i.id===curItem?"selected":""}>${esc(i.name)} (${KIND_TH[i.kind||"supply"]})</option>`).join("")}</select>
+      <button type="button" class="nin" id="dfItemBtn" style="margin-top:6px;text-align:left;display:flex;justify-content:space-between;align-items:center"><span id="dfItemLbl">${(()=>{const it=items.find(i=>i.id===curItem);return it?esc(it.name)+" ("+KIND_TH[it.kind||"supply"]+")":"เลือก…";})()}</span><span style="opacity:.4">▾</span></button>
+      <input type="hidden" id="dfItem" value="${curItem}"/>
       <div class="fhint" style="margin-top:12px">จำนวนต่อออเดอร์</div>
       <div style="margin-top:6px">${stepperHTML("dfQty",curQty,{step:1,min:0})}</div>
       <div class="fhint" style="margin-top:12px">ใช้กับช่องทาง</div>
       <div class="chips" id="dfSrc" style="margin-top:6px">${srcDefList().map(([v,l])=>`<button type="button" class="chip sm ${v===curSrc?"active":""}" data-src="${v}">${l}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">เฉพาะเมนู (ถ้าเลือก จะเติมเฉพาะเมื่อออเดอร์มีเมนูนี้)</div>
-      <select id="dfMenu" class="nin" style="margin-top:6px"><option value="__all" ${curMenu==="__all"?"selected":""}>ทุกเมนู</option>${menus.map(m=>`<option value="${m.id}" ${m.id===curMenu?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
+      <button type="button" class="nin" id="dfMenuBtn" style="margin-top:6px;text-align:left;display:flex;justify-content:space-between;align-items:center"><span id="dfMenuLbl">${curMenu==="__all"?"ทุกเมนู":(()=>{const m=menus.find(x=>x.id===curMenu);return m?esc(m.name):"ทุกเมนู";})()}</span><span style="opacity:.4">▾</span></button>
+      <input type="hidden" id="dfMenu" value="${curMenu}"/>
       <div class="swrow"><div class="swlabel">เปิดใช้</div><button class="sw ${curActive?"on":""}" id="dfActive"><span class="knob"></span></button></div>
     </div>
     <div style="height:80px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่ม":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบ</button>`:""}</div></div>`;
   document.getElementById("back").onclick=renderPackagingDefaults;
-  document.querySelectorAll("#dfSrc .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#dfSrc .chip").forEach(x=>x.classList.toggle("active",x===c)));
+  document.getElementById("dfItemBtn").onclick=()=>openPicker({title:"เลือกบรรจุภัณฑ์/วัสดุ",items:items.map(i=>({id:i.id,label:i.name,sub:KIND_TH[i.kind||"supply"]})),emptyText:"ไม่พบรายการ",onPick:(id,it)=>{document.getElementById("dfItem").value=id;document.getElementById("dfItemLbl").textContent=it.label+" ("+it.sub+")";}});
+  document.getElementById("dfMenuBtn").onclick=()=>openPicker({title:"เลือกเมนู",items:[{id:"__all",label:"ทุกเมนู"}].concat(menus.map(m=>({id:m.id,label:m.name,keywords:m.name_en||""}))),emptyText:"ไม่พบเมนู",onPick:(id,it)=>{document.getElementById("dfMenu").value=id;document.getElementById("dfMenuLbl").textContent=it.label;}});
   let active=curActive;const sw=document.getElementById("dfActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
   document.getElementById("save").onclick=()=>savePackagingDefault(def,active);
   if(!isNew)document.getElementById("del").onclick=()=>deletePackagingDefault(def);
