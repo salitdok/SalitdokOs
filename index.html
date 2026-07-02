@@ -1593,12 +1593,13 @@ function ingredientsHTML(){
   if(!list.length)return `<div class="empty">${filt==="__low"?"ไม่มีของใกล้หมด 🎉":filt?"ยังไม่มีรายการในหมวดนี้":"ยังไม่มีวัตถุดิบ/บรรจุภัณฑ์ — กด “＋ รายการ”<br>เช่น หมูสับ (g, อาหาร), กล่องข้าว (ชิ้น, บรรจุภัณฑ์)"}</div>`;
   const cur=monthOf(new Date());
   let totVal=0,lowN=0;for(const i of list){const st=sm[i.id];if(st){totVal+=Number(st.stock_value)||0;if(st.low_stock||Number(st.on_hand)<0)lowN++;}}
-  const summary=`<div class="block" style="margin:0 0 10px"><div class="row"><span class="cmeta">มูลค่าสต็อก${filt==="__low"?" (ใกล้หมด)":filt?" ("+KIND_TH[filt]+")":"รวม"}</span><b class="tnum">${fmtTHB(totVal)}</b></div>${lowN?`<div class="row" style="margin-top:4px"><span class="cmeta">⚠️ ของใกล้หมด/ติดลบ</span><b class="tnum" style="color:#c0392b">${lowN} รายการ</b></div>`:""}<button class="ghostbtn" id="wasteRep" style="margin-top:10px">🗑️ รายงานของเสีย</button></div>`;
+  const summary=`<div class="block" style="margin:0 0 10px"><div class="row"><span class="cmeta">มูลค่าสต็อก${filt==="__low"?" (ใกล้หมด)":filt?" ("+KIND_TH[filt]+")":"รวม"}</span><b class="tnum">${fmtTHB(totVal)}</b></div>${lowN?`<div class="row" style="margin-top:4px"><span class="cmeta">⚠️ ของใกล้หมด/ติดลบ</span><b class="tnum" style="color:#c0392b">${lowN} รายการ</b></div>`:""}<button class="ghostbtn" id="wasteRep" style="margin-top:10px">🗑️ รายงานของเสีย</button></div>
+  <input id="invSearch" class="nin" style="margin:0 0 10px" placeholder="🔍 ค้นหาวัตถุดิบ/บรรจุภัณฑ์…" autocomplete="off" autocapitalize="off" value="${esc(state.invSearch||"")}"/>`;
   const rows=list.map(i=>{const c=ingCostPerUnit(i.id,cur),k=i.kind||"food",st=sm[i.id];const oh=st?Number(st.on_hand):0,val=st?Number(st.stock_value):0,low=st&&st.low_stock,neg=oh<0;
     const ohTxt=`คงเหลือ <b class="tnum" style="color:${neg?"#c0392b":low?"#d9822b":"inherit"}">${fmt2(oh)}</b> ${esc(i.base_unit)} · มูลค่า ฿${fmt2(val)}`;
     const badges=`<span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span>${low&&!neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">⚠️ ใกล้หมด</span>`:""}${neg?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ติดลบ</span>`:""}`;
-    return `<div class="mmrow"><span style="width:8px;height:8px;border-radius:99px;background:${low||neg?"#c0392b":KIND_COLOR[k]};flex:none"></span><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)} ${badges}</div><div class="mmsub">${ohTxt}</div><div class="mmsub" style="opacity:.8">${c>0?`ต้นทุน ฿${fmt2(c)}/${esc(i.base_unit)}`:"ยังไม่มีราคาซื้อ"}${st&&st.reorder_level!=null?` · จุดสั่งซื้อ ${fmt2(st.reorder_level)}`:""}</div></button><span class="chev">›</span></div>`;}).join("");
-  return summary+rows;
+    return `<div class="mmrow" data-search="${esc((i.name+" "+(i.name_en||"")).toLowerCase())}"><span style="width:8px;height:8px;border-radius:99px;background:${low||neg?"#c0392b":KIND_COLOR[k]};flex:none"></span><button class="mmmain" data-edit-ing="${i.id}"><div class="mmname">${esc(i.name)} ${badges}</div><div class="mmsub">${ohTxt}</div><div class="mmsub" style="opacity:.8">${c>0?`ต้นทุน ฿${fmt2(c)}/${esc(i.base_unit)}`:"ยังไม่มีราคาซื้อ"}${st&&st.reorder_level!=null?` · จุดสั่งซื้อ ${fmt2(st.reorder_level)}`:""}</div></button><span class="chev">›</span></div>`;}).join("");
+  return summary+`<div id="invRows">${rows}</div><div id="invNoRes" class="empty" style="display:none">ไม่พบรายการที่ค้นหา</div>`;
 }
 function wireMenuList(){
   document.querySelectorAll("[data-edit-menu]").forEach(b=>b.onclick=()=>renderMenuEdit(state.data.menu.find(m=>m.id===b.dataset.editMenu)));
@@ -1606,6 +1607,7 @@ function wireMenuList(){
   document.querySelectorAll("[data-edit-addon]").forEach(b=>b.onclick=()=>renderAddonEdit(state.data.addons.find(a=>a.id===b.dataset.editAddon)));
   document.querySelectorAll("[data-toggle-addon]").forEach(b=>b.onclick=async()=>{const a=state.data.addons.find(x=>x.id===b.dataset.toggleAddon);try{await patch(state.s,`addons?id=eq.${a.id}`,{is_active:!(a.is_active!==false)});await reloadData();renderMenu();}catch(e){toast(e.message);}});
   document.querySelectorAll("[data-edit-ing]").forEach(b=>b.onclick=()=>renderIngredientEdit(state.data.ingredients.find(i=>i.id===b.dataset.editIng)));
+  {const si=document.getElementById("invSearch");if(si){si.oninput=()=>{const q=si.value.toLowerCase().trim();state.invSearch=si.value;let shown=0;document.querySelectorAll("#invRows .mmrow").forEach(row=>{const hit=!q||(row.dataset.search||"").includes(q);row.style.display=hit?"":"none";if(hit)shown++;});const nr=document.getElementById("invNoRes");if(nr)nr.style.display=shown?"none":"";};si.oninput();}}
 }
 function renderMenuEdit(m){
   editingMenu=m;const isNew=!m,cats=categories();
@@ -1849,11 +1851,12 @@ function renderPurchase(ing,existing){
       <input id="puNote" class="nin" placeholder="หมายเหตุ (ถ้ามี) เช่น ตลาดเช้า / ล็อตพิเศษ" value="${esc(dNote)}"/>
       <div class="costsum" id="puPreview" style="margin-top:10px"></div></div>
     ${reasonBlock("rsnPur")}
-    <div style="height:90px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
+    <div id="purSpacer" style="height:150px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
   wireReasonChips();
   const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,f=(BULK[ing.base_unit]||[[ing.base_unit,1]]).find(x=>x[0]===val("puUnit"));const factor=f?f[1]:1;const base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= ${fmt2(base)} ${esc(ing.base_unit)} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
   ["puQty","puTotal","puUnit"].forEach(id=>{const el=document.getElementById(id);el.oninput=upd;el.onchange=upd;});upd();
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("purSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   document.getElementById("save").onclick=async()=>{
     const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,date=val("puDate")||bkkDate(new Date()),note=val("puNote").trim()||null;
     const f=(BULK[ing.base_unit]||[[ing.base_unit,1]]).find(x=>x[0]===val("puUnit"));const base=q*(f?f[1]:1);
