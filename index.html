@@ -1532,14 +1532,15 @@ function renderCategoryEdit(c){
       <div class="chips" id="catColors" style="margin-top:6px">${CAT_COLORS.map(col=>`<button class="catcol" data-col="${col}" style="width:34px;height:34px;border-radius:99px;background:${col};border:3px solid ${col===color?"#14182B":"transparent"}"></button>`).join("")}</div>
       <div class="swrow"><div class="swlabel">เปิดใช้งาน</div><button class="sw ${(!c||c.is_active!==false)?"on":""}" id="catActive"><span class="knob"></span></button></div>
     </div>
-    <div style="height:80px"></div>
     ${reasonBlock("rsnCat")}
+    <div id="catSpacer" style="height:150px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มหมวดหมู่":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบหมวดนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=renderCategoryManager;
   wireReasonChips();
   let sel=color;document.querySelectorAll("#catColors .catcol").forEach(b=>b.onclick=()=>{sel=b.dataset.col;document.querySelectorAll("#catColors .catcol").forEach(x=>x.style.border="3px solid "+(x.dataset.col===sel?"#14182B":"transparent"));});
   let active=(!c||c.is_active!==false);const sw=document.getElementById("catActive");sw.onclick=()=>{active=!active;sw.classList.toggle("on",active);};
   document.getElementById("save").onclick=()=>saveCategory(c,()=>sel,()=>active);
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("catSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   if(!isNew)document.getElementById("del").onclick=()=>deleteCategory(c);
 }
 async function saveCategory(c,getColor,getActive){
@@ -1630,8 +1631,8 @@ function renderMenuEdit(m){
     <div class="blocktitle">สูตรอาหาร (Food Cost) — เฉพาะวัตถุดิบอาหารต่อ 1 จาน</div>
     <div class="block"><div class="cmeta" style="margin-bottom:8px">📦 บรรจุภัณฑ/ช้อน/ถุง คิดที่ระดับออเดอร์ (เลือกตอนสั่ง) ไม่ใส่ในสูตร</div><div id="recipeRows"></div><button class="ghostbtn" id="addIng" style="margin-top:0">＋ เพิ่มวัตถุดิบอาหาร</button><div id="pickerBox"></div><div id="recipeSum" class="costsum"></div></div>
     ${channelPriceBlock("menu",m?m.id:null)}
-    <div style="height:90px"></div>
     ${reasonBlock("rsnMenu")}
+    <div id="menuSpacer" style="height:180px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มเมนู":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="copy">📄 คัดลอกเมนูนี้</button><button class="delbtn" id="del">ลบเมนูนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
   wireReasonChips();
@@ -1640,6 +1641,7 @@ function renderMenuEdit(m){
   const pr=document.getElementById("miPrice");pr.oninput=updateRecipeSum;
   document.getElementById("addIng").onclick=toggleIngPicker;
   document.getElementById("save").onclick=()=>saveMenuItem(active);
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("menuSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   if(!isNew){document.getElementById("copy").onclick=()=>copyMenu(m);document.getElementById("del").onclick=()=>deleteMenuItem(m);}
   renderRecipeRows();
 }
@@ -1715,8 +1717,8 @@ function renderAddonEdit(a){
     <div class="blocktitle">หรือใช้กับเมนูเฉพาะ</div>
     <div class="block"><div class="chips" id="menuChips">${state.data.menu.map(m=>`<button class="chip sm ${lm.has(m.id)?"active":""}" data-menu="${m.id}">${esc(m.name)}</button>`).join("")}</div></div>
     ${channelPriceBlock("addon",a?a.id:null)}
-    <div style="height:80px"></div>
     ${reasonBlock("rsnAddon")}
+    <div id="addonSpacer" style="height:170px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่ม Add-on":"บันทึก"}</button>${!isNew?`<button class="delbtn" id="del">ลบ Add-on นี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
   wireReasonChips();
@@ -1726,6 +1728,7 @@ function renderAddonEdit(a){
   document.querySelectorAll("#catChips .chip").forEach(c=>c.onclick=()=>c.classList.toggle("active"));
   document.querySelectorAll("#menuChips .chip").forEach(c=>c.onclick=()=>c.classList.toggle("active"));
   document.getElementById("save").onclick=()=>saveAddon(active);
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("addonSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   if(!isNew)document.getElementById("del").onclick=()=>deleteAddon(a);
   renderRecipeRows();
 }
@@ -1774,14 +1777,15 @@ function renderIngredientEdit(ing){
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
       ${purchases.length?purchases.map(p=>`<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${fmt2(p.qty_base)} ${esc(ing.base_unit)} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+ประเภท+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
-    <div style="height:90px"></div>
     ${ing?reasonBlock("rsnIng"):""}
+    <div id="ingSpacer" style="height:180px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มรายการ":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="auditIng">🧾 ดูประวัติการแก้ไขรายการนี้</button><button class="delbtn" id="del">ลบรายการนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderMenu();
   wireReasonChips();
   document.querySelectorAll("#kindChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#kindChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
   document.querySelectorAll("#unitChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#unitChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
   document.getElementById("save").onclick=saveIngredient;
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("ingSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id))});}
   if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));
     const bc=document.getElementById("btnCount");if(bc)bc.onclick=()=>adjustStockSheet(ing,"count");
