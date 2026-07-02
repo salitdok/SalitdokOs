@@ -208,6 +208,7 @@ const SRC_MAP=new Proxy({},{get:(_,k)=>chName(String(k))});
 const SRC_COLOR=new Proxy({},{get:(_,k)=>chColor(String(k))});
 const TYPES=[["food","อาหาร"],["drink","เครื่องดื่ม"],["addon","Add-on"],["set","ชุดเซ็ต"]];
 const UNITS=["g","ml","ฟอง","ชิ้น","portion"];
+function stepForUnit(u){return /(^|[^a-z])(kg|l|ลิตร|liter|litre)([^a-z]|$)/i.test(String(u||""))?0.1:1;}
 const BULK={g:[["g",1],["kg",1000]],ml:[["ml",1],["ลิตร",1000]]};
 const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items",menuFilter:null,aiActions:[]};
 let draft=null, editingMenu=null, editingAddon=null, editingRecipe=[], editingIng=null, recipeCtx={priceId:"miPrice",sumId:"recipeSum"};
@@ -1575,7 +1576,7 @@ async function saveChannelPrices(kind,targetId){
 const KIND_COLOR={food:"#0E9F6E",packaging:"#2563EB",supply:"#7C3AED"};
 function renderRecipeRows(){
   const im=ingMap(),cur=monthOf(new Date()),box=document.getElementById("recipeRows");
-  box.innerHTML=editingRecipe.map((r,i)=>{const ing=im[r.item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;const k=ing?(ing.kind||"food"):"food";return `<div class="recrow"><div class="recname">${esc(ing?ing.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span> <span class="recunit">${esc(ing?ing.base_unit:"")}</span> · <span class="reccost tnum" id="rc_${i}">฿${fmt2(r.qty*cu)}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:5px">${stepperHTML("rq_"+i,r.qty,{step:1,min:0,sm:true})}<button class="xbtn" data-rm="${i}">×</button></div></div>`;}).join("")||`<div class="cmeta">ยังไม่มีสูตร — กดเพิ่มด้านล่าง (ถ้าไม่ใช้สูตร กรอกต้นทุนเองด้านบนได้)</div>`;
+  box.innerHTML=editingRecipe.map((r,i)=>{const ing=im[r.item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;const k=ing?(ing.kind||"food"):"food";return `<div class="recrow"><div class="recname">${esc(ing?ing.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span> <span class="recunit">${esc(ing?ing.base_unit:"")}</span> · <span class="reccost tnum" id="rc_${i}">฿${fmt2(r.qty*cu)}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:5px">${stepperHTML("rq_"+i,r.qty,{step:stepForUnit(ing?ing.base_unit:""),min:0,sm:true})}<button class="xbtn" data-rm="${i}">×</button></div></div>`;}).join("")||`<div class="cmeta">ยังไม่มีสูตร — กดเพิ่มด้านล่าง (ถ้าไม่ใช้สูตร กรอกต้นทุนเองด้านบนได้)</div>`;
   editingRecipe.forEach((r,i)=>{const q=document.getElementById("rq_"+i);if(q)q.oninput=()=>{editingRecipe[i].qty=parseFloat(q.value)||0;const ing=im[editingRecipe[i].item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;document.getElementById("rc_"+i).textContent="฿"+fmt2(editingRecipe[i].qty*cu);updateRecipeSum();};});
   box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{editingRecipe.splice(+b.dataset.rm,1);renderRecipeRows();});
   bindSteppers(box);
