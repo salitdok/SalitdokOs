@@ -143,6 +143,8 @@
   .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
   .chip.sm{padding:7px 13px;font-size:13px}
   .savebar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 20px calc(12px + env(safe-area-inset-bottom));z-index:30}
+  .costbar{display:flex;justify-content:space-between;align-items:center;width:100%;background:#fbf3ec;border:1px solid #f0d8c8;border-radius:11px;padding:9px 13px;margin-bottom:9px;font-size:13.5px;color:#5a4632;font-weight:600}
+  .costbar:active{background:#f6e8db}
   .savebtn{width:100%;height:54px;border-radius:16px;background:var(--orange);color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px}
   .savebtn[disabled]{opacity:.45}
   .delbtn{width:100%;height:48px;border-radius:14px;background:#FDECEC;color:var(--down);font-weight:700;font-size:15px;margin-top:10px}
@@ -1887,21 +1889,20 @@ function renderAdd(){
       <div class="seg" style="margin:0 0 12px"><button class="segbtn" data-cm="search">ค้นหา</button><button class="segbtn" data-cm="new">ลูกค้าใหม่</button><button class="segbtn" data-cm="imported">เก่าของร้าน</button></div>
       <div id="custArea"></div>
     </div>
-    <div class="blocktitle">เมนู</div>
-    <div class="block" id="menuList">${menu.map(m=>{const pr=priceFor(m,draft.source),diff=hasChannelPrice("menu",m.id,draft.source);return `<div class="mrow" id="row_${m.id}"><div class="mrowtop"><div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(pr)}${diff?` <span class="badge" style="background:${BRAND.orange}22;color:${BRAND.orange};font-size:10px">${SRC_MAP[draft.source]||""}</span>`:""}</div></div><div class="stepper"><button class="step minus" data-id="${m.id}" data-dir="-1">−</button><span class="cnt" id="cnt_${m.id}">0</span><button class="step plus" data-id="${m.id}" data-dir="1">+</button></div></div><div class="rowaddons" id="ad_${m.id}"></div></div>`;}).join("")||`<div class="empty">ยังไม่มีเมนูที่เปิดขาย — ไปเพิ่มที่แท็บเมนู</div>`}</div>
+    <div class="blocktitle">🏷️ ช่องทางการขาย</div>
+    <div class="block"><div class="chips" id="srcChips">${srcList().map(([k,l])=>`<button class="chip ${k===draft.source?"active":""}" data-src="${k}">${l}</button>`).join("")}</div><div class="cmeta" style="margin-top:8px">เลือกช่องทางก่อน — มีผลกับราคาขาย, GP และบรรจุภัณฑ์เริ่มต้น</div></div>
     <div class="blocktitle">เวลาออเดอร์</div>
     <div class="block"><input type="datetime-local" id="orderedAt" class="nin" style="margin-top:0" value="${esc(draft.orderedAt)}"><div class="cmeta" style="margin-top:6px">ปรับย้อนหลังได้ เช่น ใส่ออเดอร์ของวันที่ 1</div></div>
-    <div class="blocktitle">ช่องทาง</div>
-    <div class="block"><div class="chips" id="srcChips">${srcList().map(([k,l])=>`<button class="chip ${k===draft.source?"active":""}" data-src="${k}">${l}</button>`).join("")}</div></div>
+    <div class="blocktitle">เมนู</div>
+    <div class="block" id="menuList">${menu.map(m=>{const pr=priceFor(m,draft.source),diff=hasChannelPrice("menu",m.id,draft.source);return `<div class="mrow" id="row_${m.id}"><div class="mrowtop"><div class="mleft"><div class="mname">${esc(m.name)}</div><div class="mprice">${fmtTHB(pr)}${diff?` <span class="badge" style="background:${BRAND.orange}22;color:${BRAND.orange};font-size:10px">${SRC_MAP[draft.source]||""}</span>`:""}</div></div><div class="stepper"><button class="step minus" data-id="${m.id}" data-dir="-1">−</button><span class="cnt" id="cnt_${m.id}">0</span><button class="step plus" data-id="${m.id}" data-dir="1">+</button></div></div><div class="rowaddons" id="ad_${m.id}"></div></div>`;}).join("")||`<div class="empty">ยังไม่มีเมนูที่เปิดขาย — ไปเพิ่มที่แท็บเมนู</div>`}</div>
     <div class="blocktitle">📦 บรรจุภัณฑ์ / วัสดุสิ้นเปลือง</div>
     <div class="block"><div class="cmeta" style="margin-bottom:8px">เติมอัตโนมัติตามช่องทาง/เมนู — แก้จำนวน เปลี่ยนกล่อง เพิ่ม/ลบ ได้ก่อนบันทึก</div><div id="pkgList"></div><button class="ghostbtn" id="addPkg" style="margin-top:0">＋ เพิ่มบรรจุภัณฑ์/วัสดุ</button><div id="pkgPicker"></div></div>
-    <div class="blocktitle">สรุปต้นทุน</div>
-    <div class="block"><div id="orderCost" class="costsum"></div></div>
-    <div style="height:90px"></div>
-    <div class="savebar"><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button>${isEdit?"":`<button class="ghostbtn" id="saveNextBtn" style="margin-top:10px" disabled>＋ บันทึก & เพิ่มออเดอร์ถัดไป</button>`}</div></div>`;
+    <div style="height:130px"></div>
+    <div class="savebar"><button type="button" class="costbar" id="costBar"><span id="costBarInner">COGS ฿0 · กำไร ฿0</span><span style="opacity:.55">รายละเอียด ▸</span></button><button class="savebtn" id="saveBtn" disabled><span id="saveLabel">เลือกเมนูก่อน</span></button>${isEdit?"":`<button class="ghostbtn" id="saveNextBtn" style="margin-top:10px" disabled>＋ บันทึก & เพิ่มออเดอร์ถัดไป</button>`}</div></div>`;
   document.getElementById("closeAdd").onclick=()=>navigate(state.prev||"dash");
   document.querySelectorAll("#menuList .step").forEach(b=>b.onclick=()=>{const id=b.dataset.id,dir=+b.dataset.dir,m=state.data.menu.find(x=>x.id===id),cur=draft.cart[id],q=cur?cur.qty:0,next=Math.max(0,q+dir);if(cur){next===0?delete draft.cart[id]:cur.qty=next;}else if(next>0)draft.cart[id]={name:m.name,price:priceFor(m,draft.source),qty:next,addons:{}};syncMenu();});
-  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;repriceCart();renderAdd();});
+  document.querySelectorAll("#srcChips .chip").forEach(c=>c.onclick=()=>{draft.source=c.dataset.src;repriceCart();if(!draft.editId&&!draft.pkgTouched){draft.packaging=[];draft.pkgRemoved={};draft.pkgLoaded=false;}renderAdd();});
+  document.getElementById("costBar").onclick=openCostBreakdown;
   document.getElementById("addPkg").onclick=togglePkgPicker;
   document.getElementById("orderedAt").onchange=()=>{renderPackaging();};
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{const m=b.dataset.cm,curSeg=draft.customer.mode==="existing"?"search":draft.customer.mode;if(m===curSeg)return;if(m==="search")draft.customer={mode:"search"};else{const d=draft.customer;draft.customer={mode:m,name:d.name,phone:d.phone,birthdate:d.birthdate,note:d.note};}renderCustArea();});
@@ -1973,8 +1974,8 @@ function renderPackaging(){
     return `<div class="recrow"><div class="recname">${esc(it?it.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span> <span class="recunit">${esc(it?it.base_unit:"")}</span> · <span class="reccost tnum" id="pc_${i}">฿${fmt2(p.qty*cu)}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:5px">${stepperHTML("pq_"+i,p.qty,{step:stepForUnit(it?it.base_unit:""),min:0,sm:true})}<button class="xbtn" data-prm="${i}">×</button></div></div>`;}).join("")
     ||`<div class="cmeta">ยังไม่มีบรรจุภัณฑ์/วัสดุ — เลือกช่องทางเพื่อเติมอัตโนมัติ หรือกดเพิ่มด้านล่าง</div>`;
   box.innerHTML=rows;
-  (draft.packaging||[]).forEach((p,i)=>{const q=document.getElementById("pq_"+i);if(q)q.oninput=()=>{draft.packaging[i].qty=parseFloat(q.value)||0;const it=im[draft.packaging[i].item_id],cu=ingCostPerUnit(draft.packaging[i].item_id,mk);const c=document.getElementById("pc_"+i);if(c)c.textContent="฿"+fmt2(draft.packaging[i].qty*cu);updateOrderCost();};});
-  box.querySelectorAll("[data-prm]").forEach(b=>b.onclick=()=>{const i=+b.dataset.prm,it=draft.packaging[i];if(it){draft.pkgRemoved=draft.pkgRemoved||{};draft.pkgRemoved[it.item_id]=1;draft.packaging.splice(i,1);}renderPackaging();updateOrderCost();});
+  (draft.packaging||[]).forEach((p,i)=>{const q=document.getElementById("pq_"+i);if(q)q.oninput=()=>{draft.pkgTouched=true;draft.packaging[i].qty=parseFloat(q.value)||0;const it=im[draft.packaging[i].item_id],cu=ingCostPerUnit(draft.packaging[i].item_id,mk);const c=document.getElementById("pc_"+i);if(c)c.textContent="฿"+fmt2(draft.packaging[i].qty*cu);updateOrderCost();};});
+  box.querySelectorAll("[data-prm]").forEach(b=>b.onclick=()=>{draft.pkgTouched=true;const i=+b.dataset.prm,it=draft.packaging[i];if(it){draft.pkgRemoved=draft.pkgRemoved||{};draft.pkgRemoved[it.item_id]=1;draft.packaging.splice(i,1);}renderPackaging();updateOrderCost();});
   bindSteppers(box);
   updateOrderCost();
 }
@@ -1985,16 +1986,30 @@ function togglePkgPicker(){
   const used=new Set((draft.packaging||[]).map(p=>p.item_id));
   const groups=["packaging","supply"].map(k=>{const its=items.filter(i=>(i.kind||"supply")===k&&!used.has(i.id));if(!its.length)return "";return `<div class="cmeta" style="margin:6px 4px 2px;font-weight:700;color:${KIND_COLOR[k]}">${KIND_TH[k]}</div>`+its.map(i=>`<button class="pickitem" data-padd="${i.id}">${esc(i.name)} <span class="q" style="color:var(--slate)">(${esc(i.base_unit)})</span></button>`).join("");}).join("");
   box.innerHTML=`<div class="picker">${groups||`<div class="cmeta">เพิ่มครบแล้ว</div>`}</div>`;
-  box.querySelectorAll("[data-padd]").forEach(b=>b.onclick=()=>{if(draft.pkgRemoved)delete draft.pkgRemoved[b.dataset.padd];draft.packaging.push({item_id:b.dataset.padd,qty:1});box.innerHTML="";renderPackaging();});
+  box.querySelectorAll("[data-padd]").forEach(b=>b.onclick=()=>{draft.pkgTouched=true;if(draft.pkgRemoved)delete draft.pkgRemoved[b.dataset.padd];draft.packaging.push({item_id:b.dataset.padd,qty:1});box.innerHTML="";renderPackaging();});
 }
 function orderFoodCost(mk){let food=0;for(const[id,e]of Object.entries(draft.cart||{})){if(!e.qty)continue;const sp=menuCostSplit(id,mk);let f=sp.food;for(const aid of Object.keys(e.addons||{}))f+=addonCostSplit(aid,mk).food;food+=f*e.qty;}return food;}
 function packagingSplit(mk){let pkg=0,con=0;const im=ingMap();for(const p of (draft.packaging||[])){const it=im[p.item_id],k=it?(it.kind||"supply"):"supply",c=Number(p.qty)*ingCostPerUnit(p.item_id,mk);if(k==="packaging")pkg+=c;else con+=c;}return {pkg,con};}
-function updateOrderCost(){
-  const el=document.getElementById("orderCost");if(!el)return;
+function computeOrderCost(){
   const mk=pkgSaleMonth(),food=orderFoodCost(mk),{pkg,con}=packagingSplit(mk),cogs=food+pkg+con;
   let sales=0;for(const[id,e]of Object.entries(draft.cart||{})){if(!e.qty)continue;const ad=Object.values(e.addons||{}).reduce((x,a)=>x+a.price,0);sales+=(e.price+ad)*e.qty;}
-  const profit=sales-cogs;
-  el.innerHTML=`<div class="row"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(food)}</b></div><div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(pkg)}</b></div><div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(con)}</b></div><div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(cogs)}</b></div><div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(profit)}</b></div>`;
+  return {food,pkg,con,cogs,sales,profit:sales-cogs};
+}
+function updateOrderCost(){
+  const bar=document.getElementById("costBarInner");if(!bar)return;
+  const c=computeOrderCost();
+  bar.innerHTML=`COGS <b class="tnum">${fmtTHB(c.cogs)}</b> · กำไร <b class="tnum" style="color:${c.profit>=0?BRAND.up:"#c0392b"}">${fmtTHB(c.profit)}</b>`;
+}
+function openCostBreakdown(){
+  const c=computeOrderCost();
+  openSheet("สรุปต้นทุนออเดอร์",`<div class="block"><div class="costsum">
+    <div class="row"><span>ยอดขาย</span><b class="tnum">${fmtTHB(c.sales)}</b></div>
+    <div class="row" style="margin-top:6px"><span>ต้นทุนอาหาร (Food)</span><b class="tnum">${fmtTHB(c.food)}</b></div>
+    <div class="row" style="margin-top:3px"><span>บรรจุภัณฑ์ (Packaging)</span><b class="tnum">${fmtTHB(c.pkg)}</b></div>
+    <div class="row" style="margin-top:3px"><span>วัสดุสิ้นเปลือง (Consumable)</span><b class="tnum">${fmtTHB(c.con)}</b></div>
+    <div class="row" style="margin-top:4px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(c.cogs)}</b></div>
+    <div class="row" style="margin-top:4px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${c.profit>=0?BRAND.up:"#c0392b"}">${fmtTHB(c.profit)}</b></div>
+  </div><div class="cmeta" style="margin-top:8px">กำไรขั้นต้น = ยอดขาย − COGS (ยังไม่หัก GP/ค่าแอป ซึ่งคำนวณตอนบันทึกตามช่องทาง)</div></div>`);
 }
 function repriceCart(){if(draft.editId)return;const mm=menuMap(),am=addonMap();for(const[id,e]of Object.entries(draft.cart||{})){const m=mm[id];if(m)e.price=priceFor(m,draft.source);for(const aid of Object.keys(e.addons||{})){const a=am[aid];if(a)e.addons[aid].price=addonPriceFor(a,draft.source);}}}
 function syncMenu(){
