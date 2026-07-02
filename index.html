@@ -159,6 +159,12 @@
   .recrow{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:7px}
   .recname{flex:1;font-size:14px;font-weight:600;min-width:0}
   .recqty{width:72px;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 8px;font-size:15px;text-align:right;outline:none}
+  .stpr{display:flex;align-items:center;gap:6px}
+  .stpr>button{width:40px;height:44px;border-radius:11px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:700;color:#333;flex:none;-webkit-user-select:none;user-select:none;touch-action:manipulation;line-height:1;padding:0}
+  .stpr>button:active{background:#eee;transform:scale(.96)}
+  .stpr>input{flex:1;text-align:center;min-width:48px;margin-top:0!important}
+  .stpr.sm>button{width:34px;height:38px;font-size:19px;border-radius:9px}
+  .stpr.sm>input{min-width:40px}
   .recunit{font-size:12px;color:var(--slate);width:30px}
   .reccost{font-size:13px;color:var(--slate);width:58px;text-align:right}
   .xbtn{color:var(--down);font-size:20px;width:26px}
@@ -459,7 +465,24 @@ function openSheet(title,inner){
   ov.onclick=e=>{if(e.target===ov)closeSheet();};
   document.body.appendChild(ov);
   document.getElementById("sheetClose").onclick=closeSheet;
+  bindSteppers(document.getElementById("sheetBody"));
 }
+// ===== Stepper component (ใช้ซ้ำทั้งระบบ) =====
+function stepperHTML(id,value,opts){opts=opts||{};const step=opts.step||1;const min=opts.min!=null?opts.min:0;const cls=opts.cls||"nin";const sm=opts.sm?" sm":"";const ph=opts.placeholder!=null?opts.placeholder:"";
+  return `<div class="stpr${sm}" data-stpr data-step="${step}" data-min="${min===null?"":min}"><button type="button" data-sdir="-1">−</button><input id="${id}" class="${cls}" inputmode="decimal" value="${value!=null&&value!==""?value:""}" placeholder="${ph}"/><button type="button" data-sdir="1">＋</button></div>`;}
+function bindSteppers(root){root=root||document;(root.querySelectorAll?root.querySelectorAll("[data-stpr]"):[]).forEach(w=>{
+  if(w._bound)return;w._bound=1;
+  const inp=w.querySelector("input"),step=parseFloat(w.dataset.step)||1,min=w.dataset.min===""?null:parseFloat(w.dataset.min);
+  const dec=(String(step).indexOf(".")>=0)?String(step).split(".")[1].length:0;
+  const fix=v=>{const f=Math.pow(10,dec);return Math.round(v*f)/f;};
+  const bump=dir=>{let cur=parseFloat(inp.value);if(isNaN(cur))cur=0;let nv=fix(cur+dir*step);if(min!=null&&nv<min)nv=min;inp.value=dec>0?nv.toFixed(dec):String(nv);inp.dispatchEvent(new Event("input",{bubbles:true}));};
+  w.querySelectorAll("[data-sdir]").forEach(btn=>{const dir=+btn.dataset.sdir;let to,iv;
+    const start=e=>{if(e.cancelable)e.preventDefault();bump(dir);to=setTimeout(()=>{iv=setInterval(()=>bump(dir),80);},450);};
+    const stop=()=>{clearTimeout(to);clearInterval(iv);};
+    btn.addEventListener("touchstart",start,{passive:false});btn.addEventListener("mousedown",start);
+    ["touchend","touchcancel","mouseup","mouseleave"].forEach(ev=>btn.addEventListener(ev,stop));
+  });
+});}
 async function openCostSheet(){
   openSheet("รายละเอียดต้นทุนวันนี้",`<div class="empty">กำลังโหลด…</div>`);
   try{
@@ -1224,7 +1247,7 @@ function renderPackagingDefaultEdit(def){
       <div class="fhint">รายการ (บรรจุภัณฑ์/วัสดุสิ้นเปลือง)</div>
       <select id="dfItem" class="nin" style="margin-top:6px">${items.map(i=>`<option value="${i.id}" ${i.id===curItem?"selected":""}>${esc(i.name)} (${KIND_TH[i.kind||"supply"]})</option>`).join("")}</select>
       <div class="fhint" style="margin-top:12px">จำนวนต่อออเดอร์</div>
-      <input id="dfQty" class="nin" style="margin-top:6px" inputmode="decimal" value="${curQty}"/>
+      <div style="margin-top:6px">${stepperHTML("dfQty",curQty,{step:1,min:0})}</div>
       <div class="fhint" style="margin-top:12px">ใช้กับช่องทาง</div>
       <div class="chips" id="dfSrc" style="margin-top:6px">${srcDefList().map(([v,l])=>`<button type="button" class="chip sm ${v===curSrc?"active":""}" data-src="${v}">${l}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">เฉพาะเมนู (ถ้าเลือก จะเติมเฉพาะเมื่อออเดอร์มีเมนูนี้)</div>
@@ -1552,9 +1575,10 @@ async function saveChannelPrices(kind,targetId){
 const KIND_COLOR={food:"#0E9F6E",packaging:"#2563EB",supply:"#7C3AED"};
 function renderRecipeRows(){
   const im=ingMap(),cur=monthOf(new Date()),box=document.getElementById("recipeRows");
-  box.innerHTML=editingRecipe.map((r,i)=>{const ing=im[r.item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;const k=ing?(ing.kind||"food"):"food";return `<div class="recrow"><div class="recname">${esc(ing?ing.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span></div><input class="recqty tnum" id="rq_${i}" inputmode="decimal" value="${r.qty}"/><div class="recunit">${esc(ing?ing.base_unit:"")}</div><div class="reccost tnum" id="rc_${i}">฿${fmt2(r.qty*cu)}</div><button class="xbtn" data-rm="${i}">×</button></div>`;}).join("")||`<div class="cmeta">ยังไม่มีสูตร — กดเพิ่มด้านล่าง (ถ้าไม่ใช้สูตร กรอกต้นทุนเองด้านบนได้)</div>`;
+  box.innerHTML=editingRecipe.map((r,i)=>{const ing=im[r.item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;const k=ing?(ing.kind||"food"):"food";return `<div class="recrow"><div class="recname">${esc(ing?ing.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span> <span class="recunit">${esc(ing?ing.base_unit:"")}</span> · <span class="reccost tnum" id="rc_${i}">฿${fmt2(r.qty*cu)}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:5px">${stepperHTML("rq_"+i,r.qty,{step:1,min:0,sm:true})}<button class="xbtn" data-rm="${i}">×</button></div></div>`;}).join("")||`<div class="cmeta">ยังไม่มีสูตร — กดเพิ่มด้านล่าง (ถ้าไม่ใช้สูตร กรอกต้นทุนเองด้านบนได้)</div>`;
   editingRecipe.forEach((r,i)=>{const q=document.getElementById("rq_"+i);if(q)q.oninput=()=>{editingRecipe[i].qty=parseFloat(q.value)||0;const ing=im[editingRecipe[i].item_id];const cu=ing?ingCostPerUnit(ing.id,cur):0;document.getElementById("rc_"+i).textContent="฿"+fmt2(editingRecipe[i].qty*cu);updateRecipeSum();};});
   box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{editingRecipe.splice(+b.dataset.rm,1);renderRecipeRows();});
+  bindSteppers(box);
   updateRecipeSum();
 }
 function updateRecipeSum(){
@@ -1710,7 +1734,7 @@ function adjustStockSheet(ing,mode){
   openSheet(isWaste?"บันทึกของเสีย":"นับสต็อก / ปรับยอด",`
     <div class="block"><div class="row"><span>คงเหลือปัจจุบัน</span><b class="tnum">${fmt2(cur)} ${esc(ing.base_unit)}</b></div>${isWaste?`<div class="row" style="margin-top:4px"><span class="cmeta">ต้นทุนเฉลี่ยตอนนี้</span><b class="tnum">฿${fmt2(unitCostNow)}/${esc(ing.base_unit)}</b></div>`:""}</div>
     <div class="fhint" style="margin-top:10px">${isWaste?`จำนวนที่เสีย/ทิ้ง (${esc(ing.base_unit)})`:`ยอดที่นับได้จริง (${esc(ing.base_unit)})`}</div>
-    <input id="adjQty" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="${isWaste?"เช่น 5":fmt2(cur)}"/>
+    <div style="margin-top:6px">${stepperHTML("adjQty","",{step:1,min:0,placeholder:isWaste?"เช่น 5":fmt2(cur)})}</div>
     <input id="adjNote" class="nin" placeholder="หมายเหตุ${isWaste?" เช่น ไข่แตก":""} (ถ้ามี)"/>
     ${isWaste?`<div class="block" style="margin-top:8px"><div class="row"><span>มูลค่าของเสีย ≈</span><b class="tnum" id="wastePrev" style="color:#c0392b">฿0.00</b></div></div>`:""}
     <div class="cmeta" style="margin-top:8px">${isWaste?"บันทึกเป็นการตัดสต็อกออก (ของเสีย) + เก็บ snapshot ต้นทุน ณ วันที่ทิ้ง":"ระบบจะปรับยอดให้เท่ากับที่นับได้ โดยบันทึกส่วนต่างเป็นการปรับสต็อก — ใช้ตั้งยอดตั้งต้น/แก้ติดลบได้"}</div>
