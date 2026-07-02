@@ -1970,11 +1970,12 @@ function renderPackaging(){
   const box=document.getElementById("pkgList");if(!box)return;
   const im=ingMap(),mk=pkgSaleMonth();
   const rows=(draft.packaging||[]).map((p,i)=>{const it=im[p.item_id],k=it?(it.kind||"supply"):"supply",cu=ingCostPerUnit(p.item_id,mk);
-    return `<div class="recrow"><div class="recname">${esc(it?it.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span></div><input class="recqty tnum" id="pq_${i}" inputmode="decimal" value="${p.qty}"/><div class="recunit">${esc(it?it.base_unit:"")}</div><div class="reccost tnum" id="pc_${i}">฿${fmt2(p.qty*cu)}</div><button class="xbtn" data-prm="${i}">×</button></div>`;}).join("")
+    return `<div class="recrow"><div class="recname">${esc(it?it.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span> <span class="recunit">${esc(it?it.base_unit:"")}</span> · <span class="reccost tnum" id="pc_${i}">฿${fmt2(p.qty*cu)}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:5px">${stepperHTML("pq_"+i,p.qty,{step:stepForUnit(it?it.base_unit:""),min:0,sm:true})}<button class="xbtn" data-prm="${i}">×</button></div></div>`;}).join("")
     ||`<div class="cmeta">ยังไม่มีบรรจุภัณฑ์/วัสดุ — เลือกช่องทางเพื่อเติมอัตโนมัติ หรือกดเพิ่มด้านล่าง</div>`;
   box.innerHTML=rows;
   (draft.packaging||[]).forEach((p,i)=>{const q=document.getElementById("pq_"+i);if(q)q.oninput=()=>{draft.packaging[i].qty=parseFloat(q.value)||0;const it=im[draft.packaging[i].item_id],cu=ingCostPerUnit(draft.packaging[i].item_id,mk);const c=document.getElementById("pc_"+i);if(c)c.textContent="฿"+fmt2(draft.packaging[i].qty*cu);updateOrderCost();};});
   box.querySelectorAll("[data-prm]").forEach(b=>b.onclick=()=>{const i=+b.dataset.prm,it=draft.packaging[i];if(it){draft.pkgRemoved=draft.pkgRemoved||{};draft.pkgRemoved[it.item_id]=1;draft.packaging.splice(i,1);}renderPackaging();updateOrderCost();});
+  bindSteppers(box);
   updateOrderCost();
 }
 function togglePkgPicker(){
