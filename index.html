@@ -170,6 +170,10 @@
   .xbtn{color:var(--down);font-size:20px;width:26px}
   .picker{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px;margin-top:8px;max-height:230px;overflow:auto}
   .pickitem{display:block;width:100%;text-align:left;padding:10px;border-radius:8px;font-size:14px}
+  .pickitem2{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:13px 12px;border-radius:11px;font-size:15px;background:#fff;border:1px solid var(--line);margin-bottom:7px}
+  .pickitem2:active{background:#f2f2f2}
+  .pickitem2.pkcreate{background:#fff6ef;border-color:#f0c9a8;color:#c25e00;font-weight:700}
+  #pkList{max-height:52vh;overflow:auto}
   .costsum{background:#FFF7F2;border:1px solid #f6d6c2;border-radius:12px;padding:12px;margin-top:10px;font-size:14px}
   .costsum b{font-size:16px}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:var(--ink);color:#fff;font-size:14px;font-weight:600;padding:11px 18px;border-radius:99px;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;transition:opacity .2s;max-width:90%;text-align:center}
@@ -469,7 +473,53 @@ function openSheet(title,inner){
   document.getElementById("sheetClose").onclick=closeSheet;
   bindSteppers(document.getElementById("sheetBody"));
 }
-// ===== Stepper component (ใช้ซ้ำทั้งระบบ) =====
+// ===== Searchable Picker (component กลาง) =====
+// opts: {title, items:[{id,label,sub,keywords}], onPick(id,item), onCreate(query)|null, createLabel, emptyText}
+function openPicker(opts){
+  openSheet(opts.title||"เลือกรายการ",`<input id="pkSearch" class="nin" style="margin-top:0" placeholder="🔍 ค้นหา…" autocomplete="off" autocapitalize="off"/><div id="pkList" style="margin-top:10px"></div>`);
+  const inp=document.getElementById("pkSearch"),listEl=document.getElementById("pkList");
+  const norm=s=>String(s==null?"":s).toLowerCase().trim();
+  const render=()=>{
+    const raw=inp.value.trim(),q=norm(raw);
+    const filtered=(opts.items||[]).filter(it=>!q||norm(it.label).includes(q)||norm(it.sub).includes(q)||norm(it.keywords).includes(q));
+    let html=filtered.map(it=>`<button class="pickitem2" data-pk="${esc(String(it.id))}"><span>${esc(it.label)}</span>${it.sub?`<span class="q" style="color:var(--slate);font-size:13px">${esc(it.sub)}</span>`:""}</button>`).join("");
+    if(!filtered.length)html=`<div class="cmeta" style="padding:10px 4px">${opts.emptyText||"ไม่พบรายการ"}</div>`;
+    if(opts.onCreate&&raw)html+=`<button class="pickitem2 pkcreate" data-pkcreate="1">＋ เพิ่ม “${esc(raw)}” ใหม่…</button>`;
+    else if(opts.onCreate&&opts.createAlways)html+=`<button class="pickitem2 pkcreate" data-pkcreate="1">＋ ${esc(opts.createLabel||"เพิ่มรายการใหม่…")}</button>`;
+    listEl.innerHTML=html;
+    listEl.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>{const it=(opts.items||[]).find(x=>String(x.id)===b.dataset.pk);closeSheet();opts.onPick(b.dataset.pk,it);});
+    const cb=listEl.querySelector("[data-pkcreate]");if(cb)cb.onclick=()=>{const raw=inp.value.trim();closeSheet();opts.onCreate(raw);};
+  };
+  inp.oninput=render;render();
+  setTimeout(()=>{try{inp.focus();}catch(e){}},60);
+}
+function openIngPicker(){
+  const foods=state.data.inv.filter(i=>(i.kind||"food")==="food");
+  const used=new Set(editingRecipe.map(r=>r.item_id));
+  const avail=foods.filter(i=>!used.has(i.id));
+  openPicker({
+    title:"เพิ่มวัตถุดิบอาหาร",
+    items:avail.map(i=>({id:i.id,label:i.name,sub:i.base_unit,keywords:i.name_en||""})),
+    emptyText:foods.length?"ไม่พบชื่อนี้ — พิมพ์เพื่อเพิ่มใหม่ได้":"ยังไม่มีวัตถุดิบอาหาร — พิมพ์ชื่อเพื่อเพิ่ม",
+    onPick:(id)=>{editingRecipe.push({item_id:id,qty:1});renderRecipeRows();},
+    onCreate:(q)=>openQuickIngredient(q)
+  });
+}
+function openQuickIngredient(name){
+  let unit="g";
+  openSheet("เพิ่มวัตถุดิบใหม่",`
+    <div class="fhint">ชื่อวัตถุดิบ</div><input id="qiName" class="nin" style="margin-top:6px" value="${esc(name||"")}" autocapitalize="words"/>
+    <div class="fhint" style="margin-top:10px">หน่วยที่ใช้ในสูตร</div><div class="chips" id="qiUnit" style="margin-top:6px">${UNITS.map(u=>`<button type="button" class="chip sm ${u==="g"?"active":""}" data-u="${u}">${u}</button>`).join("")}</div>
+    <div class="cmeta" style="margin-top:10px">เพิ่มเป็นวัตถุดิบประเภท “อาหาร” — ใส่ราคาซื้อภายหลังได้ที่ ต้นทุน/สต็อก</div>
+    <button class="savebtn" id="qiGo" style="margin-top:14px">เพิ่มแล้วใส่ในสูตร</button>`);
+  document.querySelectorAll("#qiUnit .chip").forEach(c=>c.onclick=()=>{unit=c.dataset.u;document.querySelectorAll("#qiUnit .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  document.getElementById("qiGo").onclick=async()=>{
+    const nm=val("qiName").trim();if(!nm){toast("ใส่ชื่อ");return;}
+    const btn=document.getElementById("qiGo");btn.disabled=true;btn.textContent="กำลังเพิ่ม…";
+    try{const r=await post(state.s,"inventory_items",{store_id:state.data.store.id,name:nm,base_unit:unit,kind:"food"},"return=representation");await reloadData();editingRecipe.push({item_id:r[0].id,qty:1});closeSheet();renderRecipeRows();toast("เพิ่มวัตถุดิบแล้ว");}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent="เพิ่มแล้วใส่ในสูตร";}
+  };
+}
 function stepperHTML(id,value,opts){opts=opts||{};const step=opts.step||1;const min=opts.min!=null?opts.min:0;const cls=opts.cls||"nin";const sm=opts.sm?" sm":"";const ph=opts.placeholder!=null?opts.placeholder:"";
   return `<div class="stpr${sm}" data-stpr data-step="${step}" data-min="${min===null?"":min}"><button type="button" data-sdir="-1">−</button><input id="${id}" class="${cls}" inputmode="decimal" value="${value!=null&&value!==""?value:""}" placeholder="${ph}"/><button type="button" data-sdir="1">＋</button></div>`;}
 function bindSteppers(root){root=root||document;(root.querySelectorAll?root.querySelectorAll("[data-stpr]"):[]).forEach(w=>{
@@ -1614,17 +1664,7 @@ function updateRecipeSum(){
     el.innerHTML=`<div class="row"><span>ต้นทุนอาหาร</span><b class="tnum">${fmtTHB(sp.food)}</b></div><div class="row" style="margin-top:3px"><span>ต้นทุนบรรจุภัณฑ์</span><b class="tnum">${fmtTHB(sp.pkg)}</b></div><div class="row" style="margin-top:3px;border-top:1px solid #f0d8c8;padding-top:5px"><span>COGS รวม</span><b class="tnum">${fmtTHB(sp.total)}</b></div>${price?`<div class="row" style="margin-top:3px"><span>กำไรขั้นต้น</span><b class="tnum" style="color:${BRAND.up}">${fmtTHB(profit)}</b></div><div class="row" style="margin-top:3px"><span>Food Cost %</span><b>${fcPct}%</b></div>`:""}<div class="cmeta" style="margin-top:5px">ราคาเฉลี่ยเดือนนี้ — ออเดอร์จะ snapshot ต้นทุน ณ วันที่ขาย</div>`;}
   else el.innerHTML=`<div class="cmeta">ยังไม่มีสูตร — ระบบจะใช้ต้นทุนที่กรอกเองด้านบน</div>`;
 }
-function toggleIngPicker(){
-  const box=document.getElementById("pickerBox");
-  if(box.innerHTML){box.innerHTML="";return;}
-  const foods=state.data.inv.filter(i=>(i.kind||"food")==="food");
-  if(!foods.length){box.innerHTML=`<div class="cmeta" style="margin-top:8px">ยังไม่มีวัตถุดิบอาหาร — ไปเพิ่มที่แท็บเมนู → ต้นทุน/สต็อก (เลือกประเภท “อาหาร”) ก่อน</div>`;return;}
-  const used=new Set(editingRecipe.map(r=>r.item_id));
-  const avail=foods.filter(i=>!used.has(i.id));
-  const list=avail.map(i=>`<button class="pickitem" data-add="${i.id}">${esc(i.name)} <span class="q" style="color:var(--slate)">(${esc(i.base_unit)})</span></button>`).join("");
-  box.innerHTML=`<div class="picker"><div class="cmeta" style="margin:2px 4px 6px">📦 บรรจุภัณฑ์/วัสดุสิ้นเปลือง ย้ายไปคิดที่ระดับออเดอร์แล้ว — สูตรนี้ใส่เฉพาะวัตถุดิบอาหาร</div>${list||`<div class="cmeta">เพิ่มครบทุกวัตถุดิบอาหารแล้ว</div>`}</div>`;
-  box.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{editingRecipe.push({item_id:b.dataset.add,qty:1});box.innerHTML="";renderRecipeRows();});
-}
+function toggleIngPicker(){openIngPicker();}
 async function saveMenuItem(active){
   const name=val("miName").trim();if(!name){toast("ใส่ชื่อเมนู");return;}
   const price=parseFloat(val("miPrice"))||0,category=val("miCat").trim()||null,name_en=val("miNameEn").trim()||null;
