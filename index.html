@@ -309,7 +309,8 @@ async function loadMaster(s,storeId){
   const prodOrders=await safeRest(s,`production_orders?select=id,recipe_id,recipe_version,output_item_id,batch_no,status,multiplier,planned_output,actual_output,waste_qty,yield_loss,actual_yield_pct,input_cost_total,unit_cost,output_unit,produced_at,expiry_at,note,created_at&store_id=eq.${storeId}&status=neq.archived&order=produced_at.desc.nullslast,created_at.desc&limit=200`);
   const semiCost=await safeRest(s,`v_semi_cost_current?select=output_item_id,recipe_id,version,standard_output_qty,output_unit,batch_input_cost,current_unit_cost&store_id=eq.${storeId}`);
   const purchaseUnits=await safeRest(s,`item_purchase_units?select=id,inventory_item_id,unit,factor,is_default,sort_order,active&store_id=eq.${storeId}&active=eq.true&order=sort_order.asc`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits};
+  const suppliers=await safeRest(s,`suppliers?select=id,name,phone,contact,tax_id,default_terms_days,note,active&store_id=eq.${storeId}&archived_at=is.null&order=name.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -317,7 +318,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -976,7 +977,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={sales_channels:"ช่องทางการขาย",inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on",production_recipes:"สูตรการผลิต",production_orders:"รายการผลิต",production_recipe_items:"วัตถุดิบสูตรผลิต"};
+const ENTITY_TH={sales_channels:"ช่องทางการขาย",inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on",production_recipes:"สูตรการผลิต",production_orders:"รายการผลิต",production_recipe_items:"วัตถุดิบสูตรผลิต",suppliers:"ผู้ขาย"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -1297,7 +1298,8 @@ function renderSettings(){
     <div class="blocktitle">ต้นทุน</div>
     <div class="block"><button class="ghostbtn" id="pkgdef" style="margin-top:0">📦 ค่าเริ่มต้นบรรจุภัณฑ์ (ตามช่องทาง/เมนู)</button><div class="cmeta" style="margin-top:8px">ตั้งว่าแต่ละช่องทาง/เมนู ให้เติมกล่อง/ช้อน/ถุง อะไรอัตโนมัติตอนเปิดออเดอร์ — แก้เองได้เสมอก่อนบันทึก</div></div>
     <div class="blocktitle">การเงิน</div>
-    <div class="block"><button class="ghostbtn" id="finance" style="margin-top:0">💰 บัญชี / การเงิน (GP·VAT · ค่าใช้จ่าย · บัญชีเงิน)</button><div class="cmeta" style="margin-top:8px">ตั้งค่าธรรมเนียมแอป (GP/VAT) ต่อช่องทาง · หมวดค่าใช้จ่าย · บัญชีเงิน · บันทึกค่าใช้จ่าย เพื่อให้เห็นกำไรสุทธิจริง</div></div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="finance" style="margin-top:0">💰 บัญชี / การเงิน (GP·VAT · ค่าใช้จ่าย · บัญชีเงิน)</button><div class="cmeta" style="margin-top:8px">ตั้งค่าธรรมเนียมแอป (GP/VAT) ต่อช่องทาง · หมวดค่าใช้จ่าย · บัญชีเงิน · บันทึกค่าใช้จ่าย เพื่อให้เห็นกำไรสุทธิจริง</div></div>
+    <div class="block"><button class="ghostbtn" id="suppliers" style="margin-top:0">🏪 ผู้ขาย / เจ้าหนี้ (Supplier)</button><div class="cmeta" style="margin-top:8px">จัดการรายชื่อผู้ขาย/ซัพพลายเออร์ · เครดิตเทอม · ใช้ผูกกับการซื้อวัตถุดิบ (เร็ว ๆ นี้: เจ้าหนี้ + ชำระเงิน)</div></div>
     <div class="blocktitle">การตรวจสอบ</div>
     <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
@@ -1307,11 +1309,53 @@ function renderSettings(){
   document.getElementById("audit").onclick=()=>renderAuditLog();
   document.getElementById("pkgdef").onclick=renderPackagingDefaults;
   document.getElementById("finance").onclick=renderFinance;
+  document.getElementById("suppliers").onclick=renderSuppliers;
   document.getElementById("channels").onclick=renderChannels;
   document.getElementById("resetc").onclick=renderResetCenter;
   document.getElementById("logout").onclick=()=>doLogout();
 }
 // ===== ศูนย์รีเซ็ตข้อมูล (Data Reset Center) =====
+// ===================== PHASE 6a: SUPPLIERS =====================
+function supplierById(id){return (state.data.suppliers||[]).find(s=>s.id===id)||null;}
+function renderSuppliers(){
+  const sups=state.data.suppliers||[];
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🏪 ผู้ขาย / เจ้าหนี้</div></div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="addSup" style="margin-top:0">＋ เพิ่มผู้ขาย</button><div class="cmeta" style="margin-top:8px">ผูกผู้ขายกับการซื้อวัตถุดิบ เพื่อรองรับเครดิต/เจ้าหนี้ และวิเคราะห์ยอดซื้อ (เร็ว ๆ นี้)</div></div>
+    ${sups.length?sups.map(s=>`<div class="mmrow" style="margin:0 20px 9px"><button class="mmmain" data-sup="${s.id}"><div class="mmname">${esc(s.name)}${!s.active?` <span class="badge" style="background:#8882;color:#666;font-size:10px">ปิดใช้งาน</span>`:""}</div><div class="mmsub">${s.phone?esc(s.phone)+" · ":""}${s.default_terms_days!=null?`เครดิต ${s.default_terms_days} วัน`:"เงินสด"}${s.contact?" · "+esc(s.contact):""}</div></button><span class="chev">›</span></div>`).join(""):`<div class="empty">ยังไม่มีผู้ขาย — กด "＋ เพิ่มผู้ขาย"</div>`}
+    <div style="height:30px"></div></div>`;
+  document.getElementById("back").onclick=renderSettings;
+  document.getElementById("addSup").onclick=()=>openSupplierSheet(null);
+  document.querySelectorAll("[data-sup]").forEach(b=>b.onclick=()=>openSupplierSheet(supplierById(b.dataset.sup)));
+}
+function openSupplierSheet(sup){
+  const isEdit=!!sup;
+  openSheet(isEdit?"แก้ไขผู้ขาย":"เพิ่มผู้ขาย",`
+    <div class="fhint">ชื่อผู้ขาย/ร้าน</div><input id="supName" class="nin" style="margin-top:6px" value="${isEdit?esc(sup.name):""}" autocapitalize="words"/>
+    <div class="fhint" style="margin-top:10px">เบอร์โทร (ถ้ามี)</div><input id="supPhone" class="nin" style="margin-top:6px" inputmode="tel" value="${isEdit&&sup.phone?esc(sup.phone):""}"/>
+    <div class="fhint" style="margin-top:10px">ผู้ติดต่อ (ถ้ามี)</div><input id="supContact" class="nin" style="margin-top:6px" value="${isEdit&&sup.contact?esc(sup.contact):""}"/>
+    <div class="fhint" style="margin-top:10px">เลขผู้เสียภาษี (ถ้ามี)</div><input id="supTax" class="nin" style="margin-top:6px" value="${isEdit&&sup.tax_id?esc(sup.tax_id):""}"/>
+    <div class="fhint" style="margin-top:10px">เครดิตเริ่มต้น (วัน) — เว้นว่าง = เงินสด</div>
+    <div class="chips" id="supTerms" style="margin-top:6px">${["","0","30","45","60"].map(d=>`<button type="button" class="chip sm ${((isEdit&&String(sup.default_terms_days??"")===d)||(!isEdit&&d===""))?"active":""}" data-term="${d}">${d===""?"เงินสด":d==="0"?"0 วัน":d+" วัน"}</button>`).join("")}</div>
+    <input id="supNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ (ถ้ามี)" value="${isEdit&&sup.note?esc(sup.note):""}"/>
+    ${isEdit?`<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px"><input type="checkbox" id="supActive" ${sup.active?"checked":""}/> เปิดใช้งาน</label>`:""}
+    <button class="savebtn" id="supSave" style="margin-top:14px">${isEdit?"บันทึก":"เพิ่มผู้ขาย"}</button>
+    ${isEdit?`<button class="delbtn" id="supDel" style="margin-top:10px">ลบผู้ขายนี้</button>`:""}`);
+  let term=isEdit?String(sup.default_terms_days??""):"";
+  document.querySelectorAll("#supTerms .chip").forEach(c=>c.onclick=()=>{term=c.dataset.term;document.querySelectorAll("#supTerms .chip").forEach(x=>x.classList.toggle("active",x===c));});
+  document.getElementById("supSave").onclick=async()=>{
+    const name=val("supName").trim();if(!name){toast("ใส่ชื่อผู้ขาย");return;}
+    const payload={name,phone:val("supPhone").trim()||null,contact:val("supContact").trim()||null,tax_id:val("supTax").trim()||null,default_terms_days:term===""?null:parseInt(term),note:val("supNote").trim()||null};
+    if(isEdit)payload.active=document.getElementById("supActive").checked;
+    const btn=document.getElementById("supSave");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{if(isEdit)await patch(state.s,`suppliers?id=eq.${sup.id}`,payload);else await post(state.s,"suppliers",{store_id:state.data.store.id,...payload},"return=minimal");await reloadData();closeSheet();renderSuppliers();toast("บันทึกแล้ว");}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent=isEdit?"บันทึก":"เพิ่มผู้ขาย";}
+  };
+  if(isEdit)document.getElementById("supDel").onclick=async()=>{
+    if(!confirm(`ลบผู้ขาย "${sup.name}"?`))return;
+    try{await del(state.s,`suppliers?id=eq.${sup.id}`);await reloadData();closeSheet();renderSuppliers();toast("ลบแล้ว");}
+    catch(e){toast("ลบไม่ได้ (อาจมีการซื้อผูกอยู่) — ปิดใช้งานแทนได้");}
+  };
+}
 function renderResetCenter(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🧯 ศูนย์รีเซ็ตข้อมูล</div></div>
     <div class="cmeta" style="margin:0 2px 12px">ทุกเมนูต้องยืนยันตัวตน (อีเมล+รหัสผ่าน) และพิมพ์ข้อความยืนยันก่อนทำงาน · <b>ออเดอร์/ลูกค้า</b> เป็นการเก็บถาวร (Archive) กู้คืนได้ ไม่ลบจริง</div>
