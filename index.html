@@ -2142,7 +2142,7 @@ function renderPurchase(ing,existing){
     ${reasonBlock("rsnPur")}
     <div id="purSpacer" style="height:150px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
-  document.getElementById("puMgUnit").onclick=()=>openPurchaseUnitSheet(ing);
+  document.getElementById("puMgUnit").onclick=()=>openPurchaseUnitSheet(ing,()=>renderPurchase(state.data.inv.find(i=>i.id===ing.id),existing?state.data.purchases.find(p=>p.id===existing.id):undefined));
   wireReasonChips();
   const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,factor=factorOf(val("puUnit")),base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= <b>${fmt2(base)} ${esc(ing.base_unit)}</b>${factor!==1?` <span class="cmeta">(${fmt2(q)} × ${fmt2(factor)})</span>`:""} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
   ["puQty","puTotal","puUnit"].forEach(id=>{const el=document.getElementById(id);el.oninput=upd;el.onchange=upd;});upd();
@@ -2167,7 +2167,7 @@ function renderPurchase(ing,existing){
   };
 }
 // 4.5-A: จัดการหน่วยซื้อของวัตถุดิบ
-function openPurchaseUnitSheet(ing){
+function openPurchaseUnitSheet(ing,onClose){
   const list=(state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id);
   openSheet(`หน่วยซื้อ: ${ing.name}`,`
     <div class="cmeta" style="margin-bottom:10px">หน่วยฐาน = <b>${esc(ing.base_unit)}</b> · เพิ่มหน่วยซื้อ เช่น 1 ขวด = 700 ${esc(ing.base_unit)} (ระบบจะแปลงเป็นหน่วยฐานให้ตอนบันทึกซื้อ)</div>
@@ -2176,14 +2176,16 @@ function openPurchaseUnitSheet(ing){
     <div style="display:flex;gap:8px;margin-top:6px;align-items:center"><input id="puNewUnit" class="nin" style="margin-top:0;flex:1" placeholder="เช่น ขวด" autocapitalize="off"/><span class="cmeta">=</span><input id="puNewFactor" class="nin" style="margin-top:0;width:90px" inputmode="decimal" placeholder="700"/><span class="cmeta">${esc(ing.base_unit)}</span></div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px"><input type="checkbox" id="puNewDef"/> ตั้งเป็นหน่วยเริ่มต้นตอนซื้อ</label>
     <button class="savebtn" id="puAddUnit" style="margin-top:12px">เพิ่มหน่วยซื้อ</button>`);
-  document.querySelectorAll("[data-del-unit]").forEach(b=>b.onclick=async()=>{try{await del(state.s,`item_purchase_units?id=eq.${b.dataset.delUnit}`);await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id));}catch(e){toast(e.message);}});
+  const sc=document.getElementById("sheetClose");if(sc)sc.onclick=()=>{closeSheet();if(onClose)onClose();};
+  const ov=document.getElementById("sheetOverlay");if(ov)ov.onclick=e=>{if(e.target===ov){closeSheet();if(onClose)onClose();}};
+  document.querySelectorAll("[data-del-unit]").forEach(b=>b.onclick=async()=>{try{await del(state.s,`item_purchase_units?id=eq.${b.dataset.delUnit}`);await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id),onClose);}catch(e){toast(e.message);}});
   document.getElementById("puAddUnit").onclick=async()=>{
     const u=val("puNewUnit").trim(),f=parseFloat(val("puNewFactor"))||0,def=document.getElementById("puNewDef").checked;
     if(!u){toast("ใส่ชื่อหน่วย");return;}if(f<=0){toast("ใส่ค่าแปลง (factor) มากกว่า 0");return;}
     const btn=document.getElementById("puAddUnit");btn.disabled=true;btn.textContent="กำลังเพิ่ม…";
     try{if(def){await patch(state.s,`item_purchase_units?inventory_item_id=eq.${ing.id}`,{is_default:false});}
       await post(state.s,"item_purchase_units",{store_id:state.data.store.id,inventory_item_id:ing.id,unit:u,factor:f,is_default:def,sort_order:(state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id).length},"return=minimal");
-      await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id));toast("เพิ่มหน่วยซื้อแล้ว");
+      await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id),onClose);toast("เพิ่มหน่วยซื้อแล้ว");
     }catch(e){toast(e.message);btn.disabled=false;btn.textContent="เพิ่มหน่วยซื้อ";}
   };
 }
