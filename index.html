@@ -1940,12 +1940,13 @@ function semiCostCurrent(outId){const s=(state.data.semiCost||[]).find(x=>x.outp
 function renderProduction(){
   const tab=state.prodTab||"produce";
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🏭 การผลิต / ครัวกลาง</div></div>
-    <div class="seg" style="margin:0 20px 14px"><button class="segbtn ${tab==="produce"?"on":""}" data-pt="produce">สั่งผลิต</button><button class="segbtn ${tab==="recipe"?"on":""}" data-pt="recipe">สูตรการผลิต</button><button class="segbtn ${tab==="history"?"on":""}" data-pt="history">ประวัติ</button></div>
+    <div class="seg" style="margin:0 20px 14px"><button class="segbtn ${tab==="produce"?"on":""}" data-pt="produce">สั่งผลิต</button><button class="segbtn ${tab==="recipe"?"on":""}" data-pt="recipe">สูตร</button><button class="segbtn ${tab==="history"?"on":""}" data-pt="history">ประวัติ</button><button class="segbtn ${tab==="yield"?"on":""}" data-pt="yield">Yield</button></div>
     <div id="prodBody"></div><div style="height:40px"></div></div>`;
   document.getElementById("back").onclick=()=>{state.menuSeg="ingredients";navigate("menu");};
   document.querySelectorAll("[data-pt]").forEach(b=>b.onclick=()=>{state.prodTab=b.dataset.pt;renderProduction();});
   if(tab==="produce")prodBodyProduce();
   else if(tab==="recipe")prodBodyRecipe();
+  else if(tab==="yield")prodBodyYield();
   else prodBodyHistory();
 }
 // ---- แท็บ: สั่งผลิต ----
@@ -2106,12 +2107,56 @@ async function prodBodyHistory(){
   const rows=await safeRest(state.s,`v_production_history?select=*&store_id=eq.${sid}&order=produced_at.desc.nullslast,created_at.desc&limit=100`);
   if(!rows.length){box.innerHTML=`<div class="empty">ยังไม่มีประวัติการผลิต</div>`;return;}
   box.innerHTML=rows.map(o=>{const yv=o.yield_variance_pct,cv=o.cost_variance;
+    const yc=yieldColor(o.actual_yield_pct,o.standard_yield_pct);
     return `<div class="block" style="margin:0 20px 9px"><div class="row"><b>${esc(o.output_name)} <span class="cmeta">${esc(o.batch_no||"")}</span></b><b class="tnum">${fmt2(o.actual_output)} ${esc(o.output_unit||"")}</b></div>
-    <div class="cmeta" style="margin-top:3px">${o.produced_at?bkkDateTime(new Date(o.produced_at)):"-"} · v${o.recipe_version||"-"} · ต้นทุน ฿${fmt2(o.actual_unit_cost)}/${esc(o.output_unit||"")}</div>
-    <div class="cmeta" style="margin-top:2px">Yield ${o.actual_yield_pct!=null?fmt2(o.actual_yield_pct)+"%":"-"}${o.standard_yield_pct!=null?` (มาตรฐาน ${fmt2(o.standard_yield_pct)}%${yv!=null?`, ต่าง ${yv>0?"+":""}${fmt2(yv)}%`:""})`:""} · ของเสีย ${fmt2(o.waste_qty)} · สูญเสีย ${fmt2(o.yield_loss)}</div>
-    ${o.expiry_at?`<div class="cmeta" style="margin-top:2px">หมดอายุ ${bkkDate(new Date(o.expiry_at))}</div>`:""}
+    <div class="cmeta" style="margin-top:3px">${o.produced_at?bkkDateTime(new Date(o.produced_at)):"-"} · v${o.recipe_version||"-"} · ต้นทุน ฿${fmt2(o.actual_unit_cost)}/${esc(o.output_unit||"")}${cv!=null&&Math.abs(cv)>0.001?` <span style="color:${cv>0?"#c0392b":BRAND.up}">(${cv>0?"+":""}${fmt2(cv)} vs มาตรฐาน)</span>`:""}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">
+      <span class="badge" style="background:${yc}22;color:${yc};font-size:11px;font-weight:700">Yield ${o.actual_yield_pct!=null?fmt2(o.actual_yield_pct)+"%":"-"}</span>
+      ${o.standard_yield_pct!=null?`<span class="badge" style="background:#eee;color:#666;font-size:11px">มาตรฐาน ${fmt2(o.standard_yield_pct)}%${yv!=null?` · ${yv>0?"▲":yv<0?"▼":""}${fmt2(Math.abs(yv))}%`:""}</span>`:""}
+      ${Number(o.waste_qty)>0?`<span class="badge" style="background:#c0392b22;color:#c0392b;font-size:11px">ของเสีย ${fmt2(o.waste_qty)}</span>`:""}
+      ${Number(o.yield_loss)>0?`<span class="badge" style="background:#d9822b22;color:#d9822b;font-size:11px">สูญเสีย ${fmt2(o.yield_loss)}</span>`:""}
+    </div>
+    ${o.expiry_at?`<div class="cmeta" style="margin-top:5px">🗓️ หมดอายุ ${bkkDate(new Date(o.expiry_at))}</div>`:""}
     <button class="ghostbtn" data-arch-prod="${o.id}" style="margin-top:8px;color:#c0392b">🗄️ ยกเลิก/เก็บถาวร Batch นี้ (คืนวัตถุดิบ)</button></div>`;}).join("");
   box.querySelectorAll("[data-arch-prod]").forEach(b=>b.onclick=async()=>{if(!confirm("เก็บถาวร Batch นี้? ระบบจะคืนวัตถุดิบที่ใช้ และลบสต็อกกึ่งสำเร็จที่ผลิต — กู้คืนได้ภายหลัง"))return;b.disabled=true;b.textContent="กำลังทำ…";try{await rpc(state.s,"archive_production",{p_ids:[b.dataset.archProd]});await reloadData();toast("เก็บถาวร Batch แล้ว (คืนวัตถุดิบ)");renderProduction();}catch(e){toast(e.message);b.disabled=false;}});
+}
+function yieldColor(actual,std){if(actual==null)return "#888";if(std==null)return BRAND.up;if(actual>=std)return BRAND.up;if(actual>=std-5)return "#d9822b";return "#c0392b";}
+// ---- แท็บ: วิเคราะห์ Yield ต่อสูตร ----
+function prodBodyYield(){
+  const box=document.getElementById("prodBody");
+  const orders=(state.data.prodOrders||[]).filter(o=>o.status==="completed"&&o.actual_yield_pct!=null);
+  if(!orders.length){box.innerHTML=`<div class="empty">ยังไม่มีข้อมูลผลิตให้วิเคราะห์<br>ผลิตอย่างน้อย 1 batch ก่อน</div>`;return;}
+  const byItem={};
+  orders.forEach(o=>{(byItem[o.output_item_id]=byItem[o.output_item_id]||[]).push(o);});
+  box.innerHTML=Object.keys(byItem).map(id=>{const it=state.data.inv.find(i=>i.id===id),arr=byItem[id].slice().sort((a,b)=>new Date(b.produced_at||b.created_at)-new Date(a.produced_at||a.created_at));
+    const n=arr.length,avgY=arr.reduce((s,o)=>s+Number(o.actual_yield_pct),0)/n;
+    const rec=currentRecipeFor(id),stdY=rec&&rec.standard_yield_pct!=null?Number(rec.standard_yield_pct):null;
+    const avgCost=arr.reduce((s,o)=>s+Number(o.unit_cost||0),0)/n;
+    const totWaste=arr.reduce((s,o)=>s+Number(o.waste_qty||0),0),totLoss=arr.reduce((s,o)=>s+Number(o.yield_loss||0),0);
+    const yc=yieldColor(avgY,stdY),variance=stdY!=null?avgY-stdY:null;
+    return `<div class="block" style="margin:0 20px 9px"><button class="mmmain" data-yield-item="${id}" style="width:100%;text-align:left"><div class="row"><b>${esc(it?it.name:"?")}</b><span class="badge" style="background:${yc}22;color:${yc};font-size:12px;font-weight:700">เฉลี่ย ${fmt2(avgY)}%</span></div>
+    <div class="cmeta" style="margin-top:4px">${n} batch${stdY!=null?` · มาตรฐาน ${fmt2(stdY)}% · ${variance>=0?"สูงกว่า":"ต่ำกว่า"} ${fmt2(Math.abs(variance))}%`:" · ยังไม่ตั้งมาตรฐาน"}</div>
+    <div class="cmeta" style="margin-top:2px">ต้นทุนเฉลี่ย ฿${fmt2(avgCost)}/${esc(rec?rec.output_unit:it?it.base_unit:"")} · ของเสียรวม ${fmt2(totWaste)} · สูญเสียรวม ${fmt2(totLoss)}</div>
+    <div style="margin-top:8px">${yieldBars(arr.slice(0,10).reverse(),stdY)}</div>
+    <div class="cmeta" style="margin-top:6px;color:${BRAND.orange};font-weight:700">ดูทุก batch ›</div></button></div>`;}).join("");
+  box.querySelectorAll("[data-yield-item]").forEach(b=>b.onclick=()=>openYieldDetail(b.dataset.yieldItem));
+}
+function yieldBars(arr,stdY){
+  if(!arr.length)return "";
+  const max=Math.max(100,...arr.map(o=>Number(o.actual_yield_pct)));
+  return `<div style="display:flex;align-items:flex-end;gap:3px;height:44px">${arr.map(o=>{const y=Number(o.actual_yield_pct),h=Math.max(4,Math.round(y/max*44)),c=yieldColor(y,stdY);return `<div title="${fmt2(y)}%" style="flex:1;height:${h}px;background:${c};border-radius:3px 3px 0 0;min-width:6px"></div>`;}).join("")}</div>${stdY!=null?`<div class="cmeta" style="margin-top:2px;font-size:10px">เส้นมาตรฐาน ${fmt2(stdY)}% · แท่ง = แต่ละ batch (เก่า→ใหม่)</div>`:""}`;
+}
+function openYieldDetail(itemId){
+  const it=state.data.inv.find(i=>i.id===itemId);
+  const arr=(state.data.prodOrders||[]).filter(o=>o.output_item_id===itemId&&o.status==="completed").sort((a,b)=>new Date(b.produced_at||b.created_at)-new Date(a.produced_at||a.created_at));
+  const rec=currentRecipeFor(itemId),stdY=rec&&rec.standard_yield_pct!=null?Number(rec.standard_yield_pct):null;
+  openSheet(`Yield: ${it?it.name:""}`,`
+    ${stdY!=null?`<div class="cmeta" style="margin-bottom:10px">Yield มาตรฐาน = <b>${fmt2(stdY)}%</b></div>`:`<div class="cmeta" style="margin-bottom:10px">ยังไม่ได้ตั้ง Yield มาตรฐานในสูตร</div>`}
+    <div class="block">${arr.map(o=>{const yc=yieldColor(o.actual_yield_pct,stdY),yv=stdY!=null?Number(o.actual_yield_pct)-stdY:null;
+      return `<div style="padding:9px 0;border-bottom:1px solid var(--line)"><div class="row"><span><b>${esc(o.batch_no||"-")}</b> <span class="cmeta">${o.produced_at?bkkDateTime(new Date(o.produced_at)):""}</span></span><span class="badge" style="background:${yc}22;color:${yc};font-size:12px;font-weight:700">${fmt2(o.actual_yield_pct)}%</span></div>
+      <div class="cmeta" style="margin-top:3px">ผลิต ${fmt2(o.actual_output)} ${esc(o.output_unit||"")} · ต้นทุน ฿${fmt2(o.unit_cost)}/${esc(o.output_unit||"")}${yv!=null?` · ${yv>=0?"▲":"▼"}${fmt2(Math.abs(yv))}% vs มาตรฐาน`:""}</div>
+      <div class="cmeta" style="margin-top:2px">ของเสีย ${fmt2(o.waste_qty)} · สูญเสีย(ระเหย) ${fmt2(o.yield_loss)}</div></div>`;}).join("")}</div>
+    <div class="cmeta" style="margin-top:8px">Yield ต่ำกว่ามาตรฐานมาก = วัตถุดิบสูญเสียเยอะ (ระเหย/หก/QC) ควรตรวจสอบกระบวนการ</div><div style="height:16px"></div>`);
 }
 function bkkDateTimeLocal(d){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(d);const g={};p.forEach(x=>g[x.type]=x.value);return `${g.year}-${g.month}-${g.day}T${g.hour}:${g.minute}`;}
 
