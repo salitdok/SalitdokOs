@@ -1909,10 +1909,10 @@ function renderIngredientEdit(ing){
   wireReasonChips();
   document.querySelectorAll("#kindChips .chip").forEach(c=>c.onclick=()=>{document.querySelectorAll("#kindChips .chip").forEach(x=>x.classList.toggle("active",x===c));const sb=document.getElementById("shelfBlock");if(sb)sb.style.display=(c.dataset.kind==="semi")?"":"none";});
   document.querySelectorAll("#unitChips .chip").forEach(c=>c.onclick=()=>document.querySelectorAll("#unitChips .chip").forEach(x=>x.classList.toggle("active",x===c)));
-  document.getElementById("save").onclick=saveIngredient;
+  document.getElementById("save").onclick=()=>saveIngredient();
   {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("ingSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   if(ing){const ab=document.getElementById("auditIng");if(ab)ab.onclick=()=>renderAuditLog({title:ing.name,extra:`&entity_id=eq.${ing.id}`,back:()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id))});}
-  if(ing){document.getElementById("addPur").onclick=()=>renderPurchase(ing);document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));
+  if(ing){document.getElementById("addPur").onclick=async()=>{const uc=document.querySelector("#unitChips .chip.active"),kc=document.querySelector("#kindChips .chip.active");const curUnit=uc?uc.dataset.unit:ing.base_unit,curKind=kc?kc.dataset.kind:(ing.kind||"food"),curName=val("igName").trim();const changed=(curUnit!==ing.base_unit)||(curKind!==(ing.kind||"food"))||(curName&&curName!==ing.name);if(changed){await saveIngredient(fresh=>renderPurchase(fresh||ing));}else{renderPurchase(state.data.inv.find(i=>i.id===ing.id)||ing);}};document.getElementById("del").onclick=()=>deleteIngredient(ing);document.querySelectorAll("[data-pur]").forEach(b=>b.onclick=()=>renderPurchase(state.data.inv.find(i=>i.id===ing.id)||ing,state.data.purchases.find(p=>p.id===b.dataset.pur)));
     const bc=document.getElementById("btnCount");if(bc)bc.onclick=()=>adjustStockSheet(ing,"count");
     const bw=document.getElementById("btnWaste");if(bw)bw.onclick=()=>adjustStockSheet(ing,"waste");
     const bh=document.getElementById("btnHist");if(bh)bh.onclick=()=>openStockHistory(ing);}
@@ -1956,15 +1956,15 @@ function adjustStockSheet(ing,mode){
     catch(e){toast(e.message);btn.disabled=false;btn.textContent=isWaste?"บันทึกของเสีย":"ปรับยอด";}
   };
 }
-async function saveIngredient(){
+async function saveIngredient(afterFn){
   const name=val("igName").trim();if(!name){toast("ใส่ชื่อรายการ");return;}
   const uc=document.querySelector("#unitChips .chip.active"),kc=document.querySelector("#kindChips .chip.active");
   const base_unit=uc?uc.dataset.unit:"g",kind=kc?kc.dataset.kind:"food",reason=val("rsnIng");
   const rlRaw=(val("igReorder")||"").trim(),reorder_level=rlRaw===""?null:(isNaN(parseFloat(rlRaw))?null:parseFloat(rlRaw));
   const slRaw=(val("igShelf")||"").trim(),shelf_life_days=(kind==="semi"&&slRaw!==""&&!isNaN(parseInt(slRaw)))?parseInt(slRaw):null;
   const is_produced=(kind==="semi");
-  const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
-  try{if(editingIng){await withReason(reason,()=>patch(state.s,`inventory_items?id=eq.${editingIng.id}`,{name,base_unit,kind,reorder_level,shelf_life_days,is_produced}));await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await withReason(reason,()=>post(state.s,"inventory_items",{store_id:state.data.store.id,name,base_unit,kind,reorder_level,shelf_life_days,is_produced},"return=representation"));await reloadData();renderIngredientEdit(state.data.inv.find(i=>i.id===r[0].id));toast("เพิ่มรายการแล้ว");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
+  const btn=document.getElementById("save");if(btn){btn.disabled=true;btn.textContent="กำลังบันทึก…";}
+  try{if(editingIng){await withReason(reason,()=>patch(state.s,`inventory_items?id=eq.${editingIng.id}`,{name,base_unit,kind,reorder_level,shelf_life_days,is_produced}));await reloadData();if(afterFn){afterFn(state.data.inv.find(i=>i.id===editingIng.id));}else{renderMenu();toast("บันทึกแล้ว");}}else{const r=await withReason(reason,()=>post(state.s,"inventory_items",{store_id:state.data.store.id,name,base_unit,kind,reorder_level,shelf_life_days,is_produced},"return=representation"));await reloadData();if(afterFn){afterFn(state.data.inv.find(i=>i.id===r[0].id));}else{renderIngredientEdit(state.data.inv.find(i=>i.id===r[0].id));toast("เพิ่มรายการแล้ว");}}}catch(e){toast(e.message);if(btn){btn.disabled=false;btn.textContent="บันทึก";}}
 }
 async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&inventory_item_id=eq.${ing.id}&limit=1`);if(used.length){toast("รายการนี้ถูกใช้ในสูตรเมนู — เอาออกจากสูตรก่อน");return;}
   const pIn=await safeRest(state.s,`production_recipe_items?select=id&input_item_id=eq.${ing.id}&limit=1`);
