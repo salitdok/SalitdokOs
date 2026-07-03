@@ -285,7 +285,7 @@ async function loadMaster(s,storeId){
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${storeId}`);
   let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit,reorder_level,is_produced,shelf_life_days&store_id=eq.${storeId}&order=name.asc`);
   if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${storeId}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
-  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note&store_id=eq.${storeId}&order=purchased_at.desc`);
+  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note,purchase_unit,purchase_qty,purchase_factor&store_id=eq.${storeId}&order=purchased_at.desc`);
   const purchases=purRaw.map(p=>({...p,item_id:p.inventory_item_id||p.ingredient_id}));
   const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${storeId}`);
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
@@ -308,7 +308,8 @@ async function loadMaster(s,storeId){
   const prodRecipeItems=await safeRest(s,`production_recipe_items?select=id,recipe_id,input_item_id,qty`);
   const prodOrders=await safeRest(s,`production_orders?select=id,recipe_id,recipe_version,output_item_id,batch_no,status,multiplier,planned_output,actual_output,waste_qty,yield_loss,actual_yield_pct,input_cost_total,unit_cost,output_unit,produced_at,expiry_at,note,created_at&store_id=eq.${storeId}&status=neq.archived&order=produced_at.desc.nullslast,created_at.desc&limit=200`);
   const semiCost=await safeRest(s,`v_semi_cost_current?select=output_item_id,recipe_id,version,standard_output_qty,output_unit,batch_input_cost,current_unit_cost&store_id=eq.${storeId}`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost};
+  const purchaseUnits=await safeRest(s,`item_purchase_units?select=id,inventory_item_id,unit,factor,is_default,sort_order,active&store_id=eq.${storeId}&active=eq.true&order=sort_order.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -316,7 +317,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -1856,7 +1857,7 @@ function renderIngredientEdit(ing){
     ${ing?`<div class="block"><div class="costsum">ต้นทุนเฉลี่ยเดือนนี้ ≈ <b>${avg>0?"฿"+fmt2(avg)+"/"+esc(ing.base_unit):"ยังไม่มีข้อมูลซื้อ"}</b></div></div>
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
-      ${purchases.length?purchases.map(p=>`<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${fmt2(p.qty_base)} ${esc(ing.base_unit)} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+ประเภท+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
+      ${purchases.length?purchases.map(p=>{const pu=(p.purchase_unit&&p.purchase_unit!==ing.base_unit&&p.purchase_qty!=null)?`${fmt2(p.purchase_qty)} ${esc(p.purchase_unit)} (× ${fmt2(p.purchase_factor||1)}) = `:"";return `<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${pu}${fmt2(p.qty_base)} ${esc(ing.base_unit)} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`;}).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+ประเภท+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
     ${ing?reasonBlock("rsnIng"):""}
     <div id="ingSpacer" style="height:180px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มรายการ":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="auditIng">🧾 ดูประวัติการแก้ไขรายการนี้</button><button class="delbtn" id="del">ลบรายการนี้</button>`:""}</div></div>`;
@@ -2114,35 +2115,47 @@ async function prodBodyHistory(){
 }
 function bkkDateTimeLocal(d){const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(d);const g={};p.forEach(x=>g[x.type]=x.value);return `${g.year}-${g.month}-${g.day}T${g.hour}:${g.minute}`;}
 
+// รวมหน่วยซื้อ: base + BULK(เดิม) + item_purchase_units(ตั้งเอง) → [{unit,factor,isDefault}]
+function purchaseUnitOptions(ing){
+  const base=ing.base_unit;const out=[{unit:base,factor:1,isDefault:false}];const seen=new Set([base]);
+  (BULK[base]||[]).forEach(([u,f])=>{if(!seen.has(u)){out.push({unit:u,factor:f,isDefault:false});seen.add(u);}});
+  (state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id).forEach(p=>{if(!seen.has(p.unit)){out.push({unit:p.unit,factor:Number(p.factor),isDefault:!!p.is_default});seen.add(p.unit);}else{const e=out.find(x=>x.unit===p.unit);if(e){e.factor=Number(p.factor);e.isDefault=!!p.is_default;}}});
+  return out;
+}
 function renderPurchase(ing,existing){
-  const isEdit=!!existing;const units=BULK[ing.base_unit]||[[ing.base_unit,1]];
+  const isEdit=!!existing;const opts=purchaseUnitOptions(ing);
+  const factorOf=u=>{const o=opts.find(x=>x.unit===u);return o?o.factor:1;};
+  const defUnit=isEdit?(existing.purchase_unit||ing.base_unit):(opts.find(o=>o.isDefault)||opts[0]).unit;
   const dDate=isEdit?String(existing.purchased_at).slice(0,10):bkkDate(new Date());
-  const dQty=isEdit?Number(existing.qty_base):"";
+  const dQty=isEdit?(existing.purchase_qty!=null?Number(existing.purchase_qty):Number(existing.qty_base)):"";
   const dTotal=isEdit?Number(existing.total_price):"";
   const dNote=isEdit&&existing.note?existing.note:"";
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isEdit?"แก้ไขการซื้อ":"บันทึกการซื้อ"}</div></div>
-    <div class="block"><div class="selbox"><b>${esc(ing.name)}</b><div class="cmeta">หน่วยในสูตร: ${esc(ing.base_unit)}${isEdit?" · จำนวนที่กรอกคิดเป็นหน่วยฐาน":""}</div></div>
+    <div class="block"><div class="selbox"><b>${esc(ing.name)}</b><div class="cmeta">หน่วยฐาน: ${esc(ing.base_unit)} · เลือกหน่วยซื้อได้ (ระบบแปลงเป็นหน่วยฐานให้)</div></div>
       <div class="fhint" style="margin-top:12px">วันที่ซื้อ</div><input type="date" id="puDate" class="nin" style="margin-top:6px" value="${dDate}"/>
       <div class="fhint" style="margin-top:12px">ปริมาณที่ซื้อ</div>
-      <div style="display:flex;gap:8px;margin-top:6px"><input id="puQty" class="nin" style="margin-top:0;flex:1" inputmode="decimal" placeholder="เช่น 1" value="${dQty}"/><select id="puUnit" class="nin" style="margin-top:0;width:110px">${units.map(([u])=>`<option value="${u}"${isEdit&&u===ing.base_unit?" selected":""}>${u}</option>`).join("")}</select></div>
-      <input id="puTotal" class="nin" inputmode="decimal" placeholder="ราคารวมที่จ่าย (บาท) เช่น 160" value="${dTotal}"/>
+      <div style="display:flex;gap:8px;margin-top:6px"><input id="puQty" class="nin" style="margin-top:0;flex:1" inputmode="decimal" placeholder="เช่น 2" value="${dQty}"/><select id="puUnit" class="nin" style="margin-top:0;width:120px">${opts.map(o=>`<option value="${esc(o.unit)}"${o.unit===defUnit?" selected":""}>${esc(o.unit)}</option>`).join("")}</select></div>
+      <input id="puTotal" class="nin" inputmode="decimal" placeholder="ราคารวมที่จ่าย (บาท) เช่น 1000" value="${dTotal}"/>
       <input id="puNote" class="nin" placeholder="หมายเหตุ (ถ้ามี) เช่น ตลาดเช้า / ล็อตพิเศษ" value="${esc(dNote)}"/>
-      <div class="costsum" id="puPreview" style="margin-top:10px"></div></div>
+      <div class="costsum" id="puPreview" style="margin-top:10px"></div>
+      <button class="ghostbtn" id="puMgUnit" style="margin-top:10px">⚙️ ตั้งค่าหน่วยซื้อของวัตถุดิบนี้</button></div>
     ${reasonBlock("rsnPur")}
     <div id="purSpacer" style="height:150px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
+  document.getElementById("puMgUnit").onclick=()=>openPurchaseUnitSheet(ing);
   wireReasonChips();
-  const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,f=(BULK[ing.base_unit]||[[ing.base_unit,1]]).find(x=>x[0]===val("puUnit"));const factor=f?f[1]:1;const base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= ${fmt2(base)} ${esc(ing.base_unit)} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
+  const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,factor=factorOf(val("puUnit")),base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= <b>${fmt2(base)} ${esc(ing.base_unit)}</b>${factor!==1?` <span class="cmeta">(${fmt2(q)} × ${fmt2(factor)})</span>`:""} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
   ["puQty","puTotal","puUnit"].forEach(id=>{const el=document.getElementById(id);el.oninput=upd;el.onchange=upd;});upd();
   {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("purSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   document.getElementById("save").onclick=async()=>{
     const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,date=val("puDate")||bkkDate(new Date()),note=val("puNote").trim()||null;
-    const f=(BULK[ing.base_unit]||[[ing.base_unit,1]]).find(x=>x[0]===val("puUnit"));const base=q*(f?f[1]:1);
+    const unit=val("puUnit"),factor=factorOf(unit),base=q*factor;
     if(base<=0||tot<=0){toast("กรอกปริมาณและราคาให้ถูกต้อง");return;}
     const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    const payload={purchased_at:date,qty_base:base,total_price:tot,note,purchase_unit:unit,purchase_qty:q,purchase_factor:factor};
     try{
-      if(isEdit)await withReason(val("rsnPur"),()=>patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,{purchased_at:date,qty_base:base,total_price:tot,note}));
-      else await withReason(val("rsnPur"),()=>post(state.s,"ingredient_purchases",{store_id:state.data.store.id,inventory_item_id:ing.id,purchased_at:date,qty_base:base,total_price:tot,note},"return=minimal"));
+      if(isEdit)await withReason(val("rsnPur"),()=>patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,payload));
+      else await withReason(val("rsnPur"),()=>post(state.s,"ingredient_purchases",{store_id:state.data.store.id,inventory_item_id:ing.id,...payload},"return=minimal"));
       await reloadData();toast(isEdit?"แก้ไขการซื้อแล้ว — คำนวณต้นทุนใหม่แล้ว":"บันทึกการซื้อแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
     }catch(e){toast(e.message);btn.disabled=false;btn.textContent=isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ";}
   };
@@ -2151,6 +2164,27 @@ function renderPurchase(ing,existing){
     bar.innerHTML=`<div class="warnbox" style="margin:0 0 12px">ลบรายการซื้อนี้? (ลบเฉพาะรายการนี้ ไม่ลบวัตถุดิบ) ระบบจะคำนวณต้นทุนเฉลี่ยใหม่ทันที</div><button class="delbtn" id="delYes" style="margin-top:0">ยืนยันลบรายการนี้</button><button class="ghostbtn" id="delNo">ยกเลิก</button>`;
     document.getElementById("delNo").onclick=()=>renderPurchase(ing,state.data.purchases.find(p=>p.id===existing.id));
     document.getElementById("delYes").onclick=async()=>{try{await withReason(val("rsnPur"),()=>del(state.s,`ingredient_purchases?id=eq.${existing.id}`));await reloadData();toast("ลบรายการซื้อแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));}catch(e){toast(e.message);}};
+  };
+}
+// 4.5-A: จัดการหน่วยซื้อของวัตถุดิบ
+function openPurchaseUnitSheet(ing){
+  const list=(state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id);
+  openSheet(`หน่วยซื้อ: ${ing.name}`,`
+    <div class="cmeta" style="margin-bottom:10px">หน่วยฐาน = <b>${esc(ing.base_unit)}</b> · เพิ่มหน่วยซื้อ เช่น 1 ขวด = 700 ${esc(ing.base_unit)} (ระบบจะแปลงเป็นหน่วยฐานให้ตอนบันทึกซื้อ)</div>
+    <div id="puList">${list.length?list.map(p=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><span>1 <b>${esc(p.unit)}</b> = ${fmt2(p.factor)} ${esc(ing.base_unit)}${p.is_default?` <span class="badge" style="background:${BRAND.orange}22;color:${BRAND.orange};font-size:10px">ค่าเริ่มต้น</span>`:""}</span><button class="xbtn" data-del-unit="${p.id}">×</button></div>`).join(""):`<div class="cmeta">ยังไม่มีหน่วยซื้อเพิ่มเติม (นอกจากหน่วยฐาน + kg/L)</div>`}</div>
+    <div class="fhint" style="margin-top:14px">เพิ่มหน่วยซื้อใหม่</div>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center"><input id="puNewUnit" class="nin" style="margin-top:0;flex:1" placeholder="เช่น ขวด" autocapitalize="off"/><span class="cmeta">=</span><input id="puNewFactor" class="nin" style="margin-top:0;width:90px" inputmode="decimal" placeholder="700"/><span class="cmeta">${esc(ing.base_unit)}</span></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px"><input type="checkbox" id="puNewDef"/> ตั้งเป็นหน่วยเริ่มต้นตอนซื้อ</label>
+    <button class="savebtn" id="puAddUnit" style="margin-top:12px">เพิ่มหน่วยซื้อ</button>`);
+  document.querySelectorAll("[data-del-unit]").forEach(b=>b.onclick=async()=>{try{await del(state.s,`item_purchase_units?id=eq.${b.dataset.delUnit}`);await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id));}catch(e){toast(e.message);}});
+  document.getElementById("puAddUnit").onclick=async()=>{
+    const u=val("puNewUnit").trim(),f=parseFloat(val("puNewFactor"))||0,def=document.getElementById("puNewDef").checked;
+    if(!u){toast("ใส่ชื่อหน่วย");return;}if(f<=0){toast("ใส่ค่าแปลง (factor) มากกว่า 0");return;}
+    const btn=document.getElementById("puAddUnit");btn.disabled=true;btn.textContent="กำลังเพิ่ม…";
+    try{if(def){await patch(state.s,`item_purchase_units?inventory_item_id=eq.${ing.id}`,{is_default:false});}
+      await post(state.s,"item_purchase_units",{store_id:state.data.store.id,inventory_item_id:ing.id,unit:u,factor:f,is_default:def,sort_order:(state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id).length},"return=minimal");
+      await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id));toast("เพิ่มหน่วยซื้อแล้ว");
+    }catch(e){toast(e.message);btn.disabled=false;btn.textContent="เพิ่มหน่วยซื้อ";}
   };
 }
 function openAdd(preCustId){draft={editId:null,customer:{mode:"search"},cart:{},source:"manual",orderedAt:toLocalInput(new Date())};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
