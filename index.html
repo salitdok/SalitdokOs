@@ -214,6 +214,7 @@ const SRC_MAP=new Proxy({},{get:(_,k)=>chName(String(k))});
 const SRC_COLOR=new Proxy({},{get:(_,k)=>chColor(String(k))});
 const TYPES=[["food","อาหาร"],["drink","เครื่องดื่ม"],["addon","Add-on"],["set","ชุดเซ็ต"]];
 const UNITS=["g","ml","ฟอง","ชิ้น","portion"];
+const UNITS_MASTER=["g","kg","ml","L","ชิ้น","ฟอง","portion","แพ็ค","ถุง","ขวด","หม้อ","ถัง","ลัง"];
 function stepForUnit(u){return /(^|[^a-z])(kg|l|ลิตร|liter|litre)([^a-z]|$)/i.test(String(u||""))?0.1:1;}
 const BULK={g:[["g",1],["kg",1000]],ml:[["ml",1],["ลิตร",1000]]};
 const state={s:null,data:null,view:"dash",prev:"dash",menuSeg:"items",menuFilter:null,aiActions:[]};
@@ -519,7 +520,7 @@ function openQuickIngredient(name){
   let unit="g";
   openSheet("เพิ่มวัตถุดิบใหม่",`
     <div class="fhint">ชื่อวัตถุดิบ</div><input id="qiName" class="nin" style="margin-top:6px" value="${esc(name||"")}" autocapitalize="words"/>
-    <div class="fhint" style="margin-top:10px">หน่วยที่ใช้ในสูตร</div><div class="chips" id="qiUnit" style="margin-top:6px">${UNITS.map(u=>`<button type="button" class="chip sm ${u==="g"?"active":""}" data-u="${u}">${u}</button>`).join("")}</div>
+    <div class="fhint" style="margin-top:10px">หน่วยที่ใช้ในสูตร</div><div class="chips" id="qiUnit" style="margin-top:6px">${UNITS_MASTER.map(u=>`<button type="button" class="chip sm ${u==="g"?"active":""}" data-u="${u}">${u}</button>`).join("")}</div>
     <div class="cmeta" style="margin-top:10px">เพิ่มเป็นวัตถุดิบประเภท “อาหาร” — ใส่ราคาซื้อภายหลังได้ที่ ต้นทุน/สต็อก</div>
     <button class="savebtn" id="qiGo" style="margin-top:14px">เพิ่มแล้วใส่ในสูตร</button>`);
   document.querySelectorAll("#qiUnit .chip").forEach(c=>c.onclick=()=>{unit=c.dataset.u;document.querySelectorAll("#qiUnit .chip").forEach(x=>x.classList.toggle("active",x===c));});
@@ -1842,7 +1843,7 @@ function renderIngredientEdit(ing){
       <div class="fhint" style="margin-top:12px">ประเภทรายการ</div>
       <div class="chips" id="kindChips" style="margin-top:6px">${["food","semi","packaging","supply"].map(k=>`<button class="chip sm ${k===kind?"active":""}" data-kind="${k}">${KIND_TH[k]}</button>`).join("")}</div>
       <div class="fhint" style="margin-top:12px">หน่วยที่ใช้ในสูตร</div>
-      <div class="chips" id="unitChips" style="margin-top:6px">${UNITS.map(u=>`<button class="chip sm ${u===baseUnit?"active":""}" data-unit="${u}">${u}</button>`).join("")}</div>
+      <div class="chips" id="unitChips" style="margin-top:6px">${UNITS_MASTER.map(u=>`<button class="chip sm ${u===baseUnit?"active":""}" data-unit="${u}">${u}</button>`).join("")}</div>
       <div id="shelfBlock" style="margin-top:12px;${kind==="semi"?"":"display:none"}"><div class="fhint">อายุการเก็บ (วัน) — สำหรับสินค้ากึ่งสำเร็จ เช่น ซอส 7 / น้ำซุป 3 (เว้นว่าง = ไม่กำหนด)</div>
       <input id="igShelf" class="nin" style="margin-top:6px" inputmode="numeric" placeholder="เช่น 7" value="${ing&&ing.shelf_life_days!=null?ing.shelf_life_days:""}"/></div>
       <div class="fhint" style="margin-top:12px">จุดสั่งซื้อ — แจ้งเตือนเมื่อคงเหลือ ≤ ค่านี้ (เว้นว่าง = ไม่เตือน)</div>
@@ -2011,7 +2012,7 @@ function renderProdRecipeEdit(semi,recipe){
     <div class="block"><div class="cmeta">ผลิตออกมาเป็น <b>${esc(semi.name)}</b> (${esc(semi.base_unit)})${recipe?` · เวอร์ชันปัจจุบัน v${recipe.version}`:" · สูตรใหม่ v1"}</div></div>
     <div class="block">
       <div class="row" style="gap:8px"><div style="flex:1"><div class="fhint">ผลิตมาตรฐาน/รอบ</div>${stepperHTML("prOut",recipe?recipe.standard_output_qty:0,{step:stepForUnit(semi.base_unit),min:0})}</div>
-        <div style="width:96px"><div class="fhint">หน่วยผลิต</div><input id="prUnit" class="nin" style="margin-top:6px;text-align:center" value="${esc(recipe?recipe.output_unit:semi.base_unit)}"/></div></div>
+        <div style="width:110px"><div class="fhint">หน่วยผลิต</div><select id="prUnit" class="nin" style="margin-top:6px;text-align:center">${UNITS_MASTER.map(u=>`<option value="${u}"${(recipe?recipe.output_unit:semi.base_unit)===u?" selected":""}>${u}</option>`).join("")}</select></div></div>
       <div class="fhint" style="margin-top:10px">Yield มาตรฐาน % (ไม่บังคับ — เช่น 95)</div>
       <input id="prYield" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="เช่น 95" value="${recipe&&recipe.standard_yield_pct!=null?recipe.standard_yield_pct:""}"/>
       <div class="fhint" style="margin-top:10px">อายุการเก็บ (วัน) — ${semi.shelf_life_days!=null?`ค่าจากสินค้า: ${semi.shelf_life_days}`:"ไม่กำหนด"} (เว้นว่าง=ใช้ค่าสินค้า)</div>
