@@ -250,6 +250,10 @@ async function send(s,method,path,body,prefer){await ensureFresh();const hdr=()=
 const post=(s,p,b,pr)=>send(s,"POST",p,b,pr);
 const patch=(s,p,b)=>send(s,"PATCH",p,b,"return=minimal");
 const del=(s,p)=>send(s,"DELETE",p,null,"return=minimal");
+// เรียก Postgres function (RPC)
+async function rpc(s,fn,args){await ensureFresh();const go=()=>fetch(s.url+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:s.key,Authorization:"Bearer "+s.token,"Content-Type":"application/json"},body:JSON.stringify(args||{})});let r;try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}if(r.status===401){try{await doRefresh();}catch(_){const e=new Error("เซสชันหมดอายุ");e.code=401;throw e;}try{r=await go();}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}}const t=await r.text();const d=t?JSON.parse(t):null;if(!r.ok)throw new Error((d&&(d.message||d.hint))||"เรียกฟังก์ชันไม่สำเร็จ");return d;}
+// ยืนยันรหัสผ่านซ้ำ (ไม่แตะ session ปัจจุบัน) — สำหรับ re-auth ก่อนทำงานอันตราย
+async function verifyPassword(email,password){let r;try{r=await fetch(CONFIG.SUPABASE_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:CONFIG.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});}catch(e){throw new Error("เครือข่ายเข้าไม่ถึง Supabase");}const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error_description||d.msg||d.error||"อีเมลหรือรหัสผ่านไม่ถูกต้อง");return true;}
 
 // ===================== LOADERS (per-module — Phase 0) =====================
 // แยกจาก loadAll เดิมเพื่อให้แต่ละหน้าโหลดเฉพาะส่วนได้ในอนาคต
@@ -268,7 +272,7 @@ async function loadOrders(s,storeId,sinceISO){
   try{return await rest(s,oxA);}catch(e){try{return await rest(s,oxB);}catch(e2){return await rest(s,oxC);}}
 }
 async function loadCustomers(s,storeId){
-  return rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,acquisition_source,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${storeId}&is_active=eq.true&order=last_order_at.desc.nullslast,created_at.desc`);
+  return rest(s,`customers?select=id,name,phone,is_guest,birthdate,note,customer_type,acquisition_source,vip_manual,total_orders,total_spent,last_order_at,favorite_item_id,created_at&store_id=eq.${storeId}&is_active=eq.true&archived_at=is.null&order=last_order_at.desc.nullslast,created_at.desc`);
 }
 async function loadLoyalty(s,storeId){
   const since=new Date(Date.now()-95*DAY).toISOString();
@@ -309,7 +313,7 @@ async function loadAll(s){
   const m=await loadMaster(s,store.id);
   return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels};
 }
-async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&order=ordered_at.desc&limit=50`);}
+async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
   const a=`orders?select=id,customer_id,source,status,ordered_at,net_total,food_cost_snapshot,packaging_cost_snapshot,consumable_cost_snapshot,cogs_snapshot,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,cost_snapshot,food_cost_snapshot,pkg_cost_snapshot,order_item_addons(addon_id,name,price,quantity,food_cost_snapshot,pkg_cost_snapshot)),order_packaging(inventory_item_id,kind,qty,unit_cost_snapshot,line_cost_snapshot)&id=eq.${id}&limit=1`;
   const b=`orders?select=id,customer_id,source,status,ordered_at,net_total,customers(name),order_items(menu_item_id,item_name,unit_price,quantity,order_item_addons(addon_id,name,price,quantity))&id=eq.${id}&limit=1`;
@@ -1291,15 +1295,83 @@ function renderSettings(){
     <div class="blocktitle">การตรวจสอบ</div>
     <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
-    <div class="block"><button class="delbtn" id="clear" style="margin-top:0">🗑️ ล้างข้อมูล & เริ่มต้นใหม่</button><div class="cmeta" style="margin-top:8px">ลบ ออเดอร์/ลูกค้า/เมนู/Add-on/วัตถุดิบ ทั้งหมด · เก็บ user, ร้าน, แพ็กเกจ</div></div>
+    <div class="block"><button class="ghostbtn" id="resetc" style="margin-top:0">🧯 ศูนย์รีเซ็ตข้อมูล</button><div class="cmeta" style="margin-top:8px">ล้างออเดอร์ · ล้างลูกค้า · รีเซ็ตทั้งระบบ — มีระบบยืนยันตัวตน + กู้คืนได้</div></div>
     <div class="block"><button class="ghostbtn" id="logout" style="margin-top:0">ออกจากระบบ</button></div></div>`;
   document.getElementById("back").onclick=()=>navigate("dash");
   document.getElementById("audit").onclick=()=>renderAuditLog();
   document.getElementById("pkgdef").onclick=renderPackagingDefaults;
   document.getElementById("finance").onclick=renderFinance;
   document.getElementById("channels").onclick=renderChannels;
-  document.getElementById("clear").onclick=renderClearConfirm;
+  document.getElementById("resetc").onclick=renderResetCenter;
   document.getElementById("logout").onclick=()=>doLogout();
+}
+// ===== ศูนย์รีเซ็ตข้อมูล (Data Reset Center) =====
+function renderResetCenter(){
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🧯 ศูนย์รีเซ็ตข้อมูล</div></div>
+    <div class="cmeta" style="margin:0 2px 12px">ทุกเมนูต้องยืนยันตัวตน (อีเมล+รหัสผ่าน) และพิมพ์ข้อความยืนยันก่อนทำงาน · <b>ออเดอร์/ลูกค้า</b> เป็นการเก็บถาวร (Archive) กู้คืนได้ ไม่ลบจริง</div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="rcOrders" style="margin-top:0;text-align:left">🧹 ล้างออเดอร์ทั้งหมด (Archive)</button><div class="cmeta" style="margin-top:8px">ย้ายออเดอร์ทั้งหมดไปที่เก็บถาวร + คืนสต็อกที่ขายไป · เก็บเมนู/วัตถุดิบ/ลูกค้า/บัญชี/ค่าใช้จ่ายไว้ครบ · กู้คืนทีละรายการได้</div></div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="rcCust" style="margin-top:0;text-align:left">👥 ล้างลูกค้าทั้งหมด (Archive)</button><div class="cmeta" style="margin-top:8px">ซ่อนลูกค้าทั้งหมดจากการใช้งาน (ไม่ลบจริง) · ออเดอร์เดิมยังอยู่ · กู้คืนได้</div></div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="rcArch" style="margin-top:0;text-align:left">🗄️ รายการที่เก็บถาวร (กู้คืน)</button><div class="cmeta" style="margin-top:8px">ดูออเดอร์/ลูกค้าที่ถูก Archive แล้วกู้คืนทีละรายการ</div></div>
+    <div class="blocktitle" style="color:#c0392b">อันตราย</div>
+    <div class="block"><button class="delbtn" id="rcAll" style="margin-top:0">🔥 รีเซ็ตทั้งระบบ (ลบถาวร)</button><div class="cmeta" style="margin-top:8px">ลบถาวร ออเดอร์/ลูกค้า/เมนู/Add-on/วัตถุดิบ ทั้งหมด · เก็บ user, ร้าน, แพ็กเกจ · <b style="color:#c0392b">กู้คืนไม่ได้</b></div></div>
+    <div style="height:40px"></div></div>`;
+  document.getElementById("back").onclick=renderSettings;
+  document.getElementById("rcOrders").onclick=()=>openResetGate({
+    title:"ล้างออเดอร์ทั้งหมด",phrase:"ล้างออเดอร์ทั้งหมด",
+    desc:"ย้ายออเดอร์ทั้งหมดไปที่เก็บถาวร (Archive) และคืนสต็อกที่ขายไป — กู้คืนได้ภายหลัง",
+    run:async()=>{const n=await rpc(state.s,"archive_all_orders",{p_store:state.data.store.id});await reloadData();toast(`เก็บถาวร ${n} ออเดอร์แล้ว`);renderResetCenter();}
+  });
+  document.getElementById("rcCust").onclick=()=>openResetGate({
+    title:"ล้างลูกค้าทั้งหมด",phrase:"ล้างลูกค้าทั้งหมด",
+    desc:"ซ่อนลูกค้าทั้งหมด (Archive) — ออเดอร์เดิมยังอยู่ กู้คืนได้",
+    run:async()=>{const ids=(state.data.customers||[]).filter(c=>!c.is_guest).map(c=>c.id);if(!ids.length){toast("ไม่มีลูกค้าให้ล้าง");return;}const n=await rpc(state.s,"archive_customers",{p_ids:ids});await reloadData();toast(`เก็บถาวร ${n} ลูกค้าแล้ว`);renderResetCenter();}
+  });
+  document.getElementById("rcArch").onclick=renderArchived;
+  document.getElementById("rcAll").onclick=renderClearConfirm;
+}
+// ===== ประตูยืนยัน 2 ชั้น (re-auth + พิมพ์ข้อความ) =====
+function openResetGate(opts){
+  openSheet("ยืนยันตัวตน — "+opts.title,`
+    <div class="warnbox" style="margin-bottom:12px">${esc(opts.desc)}</div>
+    <div class="fhint">อีเมล</div><input id="gEmail" class="nin" style="margin-top:6px" inputmode="email" autocapitalize="off" value="${esc(state.s&&state.s.email||"")}"/>
+    <div class="fhint" style="margin-top:10px">รหัสผ่าน</div><input id="gPass" class="nin" style="margin-top:6px" type="password" autocapitalize="off"/>
+    <div class="fhint" style="margin-top:10px">พิมพ์ข้อความนี้เพื่อยืนยัน: <b>${esc(opts.phrase)}</b></div>
+    <input id="gPhrase" class="nin" style="margin-top:6px" autocapitalize="off" placeholder="${esc(opts.phrase)}"/>
+    <div id="gErr" class="hidden" style="color:#c0392b;font-size:13px;margin-top:8px"></div>
+    <button class="delbtn" id="gGo" style="margin-top:14px" disabled>ยืนยันและดำเนินการ</button>`);
+  const chk=()=>{const ok=val("gEmail").trim()&&val("gPass")&&val("gPhrase").trim()===opts.phrase;document.getElementById("gGo").disabled=!ok;};
+  ["gEmail","gPass","gPhrase"].forEach(id=>{document.getElementById(id).oninput=chk;});chk();
+  document.getElementById("gGo").onclick=async()=>{
+    const btn=document.getElementById("gGo"),err=document.getElementById("gErr");err.classList.add("hidden");
+    btn.disabled=true;btn.textContent="กำลังยืนยันตัวตน…";
+    try{await verifyPassword(val("gEmail").trim(),val("gPass"));btn.textContent="กำลังดำเนินการ…";await opts.run();closeSheet();}
+    catch(e){err.textContent=e.message;err.classList.remove("hidden");btn.disabled=false;btn.textContent="ยืนยันและดำเนินการ";}
+  };
+}
+// ===== หน้ารายการที่เก็บถาวร + กู้คืน =====
+async function renderArchived(){
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🗄️ รายการที่เก็บถาวร</div></div><div class="seg" style="margin:0 0 12px"><button class="segbtn on" id="tabO">ออเดอร์</button><button class="segbtn" id="tabC">ลูกค้า</button></div><div id="archBody"><div class="empty">กำลังโหลด…</div></div><div style="height:30px"></div></div>`;
+  document.getElementById("back").onclick=renderResetCenter;
+  const sid=state.data.store.id;
+  const showOrders=async()=>{
+    document.getElementById("tabO").classList.add("on");document.getElementById("tabC").classList.remove("on");
+    const body=document.getElementById("archBody");body.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
+    const rows=await safeRest(state.s,`orders?select=id,net_total,ordered_at,status_before_archive,archived_at,customers(name),order_items(item_name,quantity)&store_id=eq.${sid}&status=eq.archived&order=archived_at.desc&limit=200`);
+    if(!rows.length){body.innerHTML=`<div class="empty">ไม่มีออเดอร์ที่เก็บถาวร</div>`;return;}
+    body.innerHTML=rows.map(o=>{const items=(o.order_items||[]).map(i=>`${esc(i.item_name)}×${i.quantity}`).join(", ")||"—";const t=bkkDateTime(new Date(o.ordered_at));return `<div class="block" style="margin-bottom:8px"><div class="row"><b>${esc(o.customers?o.customers.name:"ไม่ระบุลูกค้า")}</b><b class="tnum">${fmtTHB(o.net_total)}</b></div><div class="cmeta" style="margin-top:3px">${items}</div><div class="cmeta" style="margin-top:2px">${t} · เดิม: ${o.status_before_archive==="cancelled"?"ยกเลิก":"สำเร็จ"}</div><button class="ghostbtn" data-restore-o="${o.id}" style="margin-top:8px">↩️ กู้คืนออเดอร์นี้</button></div>`;}).join("");
+    body.querySelectorAll("[data-restore-o]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent="กำลังกู้คืน…";try{await rpc(state.s,"restore_orders",{p_ids:[b.dataset.restoreO]});await reloadData();toast("กู้คืนออเดอร์แล้ว");showOrders();}catch(e){toast(e.message);b.disabled=false;b.textContent="↩️ กู้คืนออเดอร์นี้";}});
+  };
+  const showCust=async()=>{
+    document.getElementById("tabC").classList.add("on");document.getElementById("tabO").classList.remove("on");
+    const body=document.getElementById("archBody");body.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
+    const rows=await safeRest(state.s,`customers?select=id,name,phone,archived_at,total_orders,total_spent&store_id=eq.${sid}&archived_at=not.is.null&order=archived_at.desc&limit=200`);
+    if(!rows.length){body.innerHTML=`<div class="empty">ไม่มีลูกค้าที่เก็บถาวร</div>`;return;}
+    body.innerHTML=rows.map(c=>`<div class="block" style="margin-bottom:8px"><div class="row"><b>${esc(c.name)}</b><span class="cmeta">${c.phone?esc(c.phone):""}</span></div><div class="cmeta" style="margin-top:2px">${c.total_orders||0} ออเดอร์ · ${fmtTHB(c.total_spent||0)}</div><button class="ghostbtn" data-restore-c="${c.id}" style="margin-top:8px">↩️ กู้คืนลูกค้านี้</button></div>`).join("");
+    body.querySelectorAll("[data-restore-c]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent="กำลังกู้คืน…";try{await rpc(state.s,"restore_customers",{p_ids:[b.dataset.restoreC]});await reloadData();toast("กู้คืนลูกค้าแล้ว");showCust();}catch(e){toast(e.message);b.disabled=false;b.textContent="↩️ กู้คืนลูกค้านี้";}});
+  };
+  document.getElementById("tabO").onclick=showOrders;
+  document.getElementById("tabC").onclick=showCust;
+  showOrders();
 }
 // ===== Packaging Defaults (2.5b-①) =====
 function srcDefList(){return [["__all","ทุกช่องทาง"],...srcList()];}
