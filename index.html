@@ -1921,7 +1921,12 @@ async function saveIngredient(){
   const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
   try{if(editingIng){await withReason(reason,()=>patch(state.s,`inventory_items?id=eq.${editingIng.id}`,{name,base_unit,kind,reorder_level,shelf_life_days,is_produced}));await reloadData();renderMenu();toast("บันทึกแล้ว");}else{const r=await withReason(reason,()=>post(state.s,"inventory_items",{store_id:state.data.store.id,name,base_unit,kind,reorder_level,shelf_life_days,is_produced},"return=representation"));await reloadData();renderIngredientEdit(state.data.inv.find(i=>i.id===r[0].id));toast("เพิ่มรายการแล้ว");}}catch(e){toast(e.message);btn.disabled=false;btn.textContent="บันทึก";}
 }
-async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&inventory_item_id=eq.${ing.id}&limit=1`);if(used.length){toast("รายการนี้ถูกใช้ในสูตร — เอาออกจากสูตรก่อน");return;}await withReason(val("rsnIng"),async()=>{await del(state.s,`ingredient_purchases?inventory_item_id=eq.${ing.id}`);await del(state.s,`inventory_items?id=eq.${ing.id}`);});await reloadData();renderMenu();toast("ลบรายการแล้ว");}catch(e){toast(e.message);}}
+async function deleteIngredient(ing){try{const used=await rest(state.s,`recipe_items?select=id&inventory_item_id=eq.${ing.id}&limit=1`);if(used.length){toast("รายการนี้ถูกใช้ในสูตรเมนู — เอาออกจากสูตรก่อน");return;}
+  const pIn=await safeRest(state.s,`production_recipe_items?select=id&input_item_id=eq.${ing.id}&limit=1`);
+  const pOut=await safeRest(state.s,`production_recipes?select=id&output_item_id=eq.${ing.id}&limit=1`);
+  const pOrd=await safeRest(state.s,`production_orders?select=id&output_item_id=eq.${ing.id}&limit=1`);
+  if(pIn.length||pOut.length||pOrd.length){toast("รายการนี้ถูกใช้ในระบบการผลิต (สูตร/วัตถุดิบ/ประวัติผลิต) — ลบไม่ได้");return;}
+  await withReason(val("rsnIng"),async()=>{await del(state.s,`ingredient_purchases?inventory_item_id=eq.${ing.id}`);await del(state.s,`inventory_items?id=eq.${ing.id}`);});await reloadData();renderMenu();toast("ลบรายการแล้ว");}catch(e){toast(e.message);}}
 // ===================== PHASE 4: PRODUCTION / CENTRAL KITCHEN =====================
 let editingProdRecipe=[];
 function semiList(){return state.data.inv.filter(i=>(i.kind||"")==="semi");}
@@ -2021,13 +2026,13 @@ function renderProdRecipeEdit(semi,recipe){
     <div class="blocktitle">วัตถุดิบในสูตร (BOM)</div>
     <div class="block"><div id="prRows"></div><button class="ghostbtn" id="prAdd" style="margin-top:6px">＋ เพิ่มวัตถุดิบ/สินค้ากึ่งสำเร็จ</button></div>
     <div id="prSpacer" style="height:170px"></div>
-    <div class="savebar">${isNew?`<button class="savebtn" id="prSaveNew">บันทึกสูตร (v1)</button>`:`<button class="savebtn" id="prSaveEdit">💾 บันทึก (แก้เวอร์ชัน v${recipe.version})</button><button class="ghostbtn" id="prSaveVer">🆕 บันทึกเป็นเวอร์ชันใหม่</button>`}</div></div>`;
+    <div class="savebar">${isNew?`<button class="savebtn" id="prSaveNew">บันทึกสูตร (v1)</button>`:`<button class="savebtn" id="prSaveEdit">💾 บันทึก (แก้เวอร์ชัน v${recipe.version})</button><button class="ghostbtn" id="prSaveVer">🆕 บันทึกเป็นเวอร์ชันใหม่</button><button class="delbtn" id="prDel">ลบสูตรนี้</button>`}</div></div>`;
   document.getElementById("back").onclick=()=>{state.prodTab="recipe";renderProduction();};
   renderProdRecipeRows(semi);
   document.getElementById("prAdd").onclick=()=>openProdInputPicker(semi);
   const doSave=(mode)=>saveProdRecipe(semi,recipe,mode);
   if(isNew)document.getElementById("prSaveNew").onclick=()=>doSave("new1");
-  else{document.getElementById("prSaveEdit").onclick=()=>doSave("edit");document.getElementById("prSaveVer").onclick=()=>doSave("newver");}
+  else{document.getElementById("prSaveEdit").onclick=()=>doSave("edit");document.getElementById("prSaveVer").onclick=()=>doSave("newver");document.getElementById("prDel").onclick=()=>deleteProdRecipe(semi,recipe);}
   {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("prSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
 }
 function renderProdRecipeRows(semi){
@@ -2082,6 +2087,18 @@ async function saveProdRecipe(semi,recipe,mode){
   }catch(e){toast(e.message);if(btn){btn.disabled=false;btn.textContent="บันทึก";}}
 }
 // ---- แท็บ: ประวัติการผลิต ----
+async function deleteProdRecipe(semi,recipe){
+  try{
+    const ord=await safeRest(state.s,`production_orders?select=id&recipe_id=eq.${recipe.id}&limit=1`);
+    if(ord.length){toast("สูตรนี้เคยใช้ผลิตแล้ว ลบไม่ได้ (เก็บประวัติ) — ปิดใช้งานหรือสร้างเวอร์ชันใหม่แทน");return;}
+    if(!confirm(`ลบสูตร v${recipe.version} ของ "${semi.name}"?`))return;
+    await del(state.s,`production_recipe_items?recipe_id=eq.${recipe.id}`);
+    await del(state.s,`production_recipes?id=eq.${recipe.id}`);
+    // ถ้าสูตรที่ลบเป็น current และยังมีเวอร์ชันอื่น → ตั้งเวอร์ชันล่าสุดที่เหลือเป็น current
+    if(recipe.is_current){const rest2=recipesFor(semi.id).filter(r=>r.id!==recipe.id);if(rest2.length){const top=rest2.sort((a,b)=>b.version-a.version)[0];await patch(state.s,`production_recipes?id=eq.${top.id}`,{is_current:true});}}
+    await reloadData();toast("ลบสูตรแล้ว");state.prodTab="recipe";renderProduction();
+  }catch(e){toast(e.message);}
+}
 async function prodBodyHistory(){
   const box=document.getElementById("prodBody");box.innerHTML=`<div class="empty">กำลังโหลด…</div>`;
   const sid=state.data.store.id;
