@@ -1345,7 +1345,7 @@ function openPaySheet(payableId,balance,sup){
   openSheet("ชำระเจ้าหนี้",`
     <div class="cmeta" style="margin-bottom:10px">ยอดค้าง <b style="color:#c0392b">${fmtTHB(balance)}</b> · ${esc(sup.name)}</div>
     <div class="fhint">จ่ายจากบัญชี</div>
-    <select id="payAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>`<option value="${a.id}"${i===0?" selected":""}>${esc(a.name)}</option>`).join(""):`<option value="">— ยังไม่มีบัญชีเงิน —</option>`}</select>
+    <select id="payAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>{const bal=(state.data.cashBalance||[]).find(b=>b.account_id===a.id);return `<option value="${a.id}"${i===0?" selected":""}>${esc(a.name)}${bal?" · ฿"+fmt2(bal.balance):""}</option>`;}).join(""):`<option value="">— ยังไม่มีบัญชีเงิน —</option>`}</select>
     <div class="fhint" style="margin-top:12px">จำนวนที่ชำระ (บาท)</div>
     <input id="payAmt" class="nin" style="margin-top:6px" inputmode="decimal" value="${fmt2(balance)}"/>
     <div class="cmeta" style="margin-top:4px">จ่ายเต็มหรือบางส่วนก็ได้ (ไม่เกินยอดค้าง)</div>
@@ -2286,7 +2286,7 @@ function renderPurchase(ing,existing){
       <div class="fhint" style="margin-top:12px">การชำระ</div>
       <div class="chips" id="puPay" style="margin-top:6px"><button type="button" class="chip ${defPay==="paid"?"active":""}" data-pay="paid">💵 จ่ายแล้ว (สด)</button><button type="button" class="chip ${defPay==="credit"?"active":""}" data-pay="credit">🧾 เครดิต (เจ้าหนี้)</button></div>
       <div id="puPaidBox" style="margin-top:10px;${defPay==="paid"?"":"display:none"}"><div class="fhint">จ่ายจากบัญชี</div>
-        <select id="puAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>`<option value="${a.id}"${(isEdit&&existing.cash_account_id===a.id)||(!isEdit&&i===0)?" selected":""}>${esc(a.name)}</option>`).join(""):`<option value="">— ยังไม่มีบัญชีเงิน (ตั้งค่าที่ การเงิน) —</option>`}</select></div>
+        <select id="puAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>{const bal=(state.data.cashBalance||[]).find(b=>b.account_id===a.id);return `<option value="${a.id}"${(isEdit&&existing.cash_account_id===a.id)||(!isEdit&&i===0)?" selected":""}>${esc(a.name)}${bal?" · ฿"+fmt2(bal.balance):""}</option>`;}).join(""):`<option value="">— ยังไม่มีบัญชีเงิน (ตั้งค่าที่ การเงิน) —</option>`}</select></div>
       <div id="puCreditBox" style="margin-top:10px;${defPay==="credit"?"":"display:none"}"><div class="fhint">ครบกำหนดชำระ</div>
         <input type="date" id="puDue" class="nin" style="margin-top:6px" value="${isEdit&&existing.due_date?existing.due_date:""}"/>
         <div class="cmeta" style="margin-top:4px" id="puDueHint">เลือกผู้ขายที่มีเครดิตเทอม ระบบจะเติมวันครบกำหนดให้</div></div>
