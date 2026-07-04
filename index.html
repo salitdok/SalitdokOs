@@ -285,7 +285,7 @@ async function loadMaster(s,storeId){
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${storeId}`);
   let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit,reorder_level,is_produced,shelf_life_days&store_id=eq.${storeId}&order=name.asc`);
   if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${storeId}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
-  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note,purchase_unit,purchase_qty,purchase_factor&store_id=eq.${storeId}&order=purchased_at.desc`);
+  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note,purchase_unit,purchase_qty,purchase_factor,supplier_id,payment_type,cash_account_id,due_date,paid_at&store_id=eq.${storeId}&order=purchased_at.desc`);
   const purchases=purRaw.map(p=>({...p,item_id:p.inventory_item_id||p.ingredient_id}));
   const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${storeId}`);
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
@@ -310,7 +310,9 @@ async function loadMaster(s,storeId){
   const semiCost=await safeRest(s,`v_semi_cost_current?select=output_item_id,recipe_id,version,standard_output_qty,output_unit,batch_input_cost,current_unit_cost&store_id=eq.${storeId}`);
   const purchaseUnits=await safeRest(s,`item_purchase_units?select=id,inventory_item_id,unit,factor,is_default,sort_order,active&store_id=eq.${storeId}&active=eq.true&order=sort_order.asc`);
   const suppliers=await safeRest(s,`suppliers?select=id,name,phone,contact,tax_id,default_terms_days,note,active&store_id=eq.${storeId}&archived_at=is.null&order=name.asc`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers};
+  const apSummary=await safeRest(s,`v_ap_summary?select=supplier_id,supplier_name,open_bills,balance,next_due&store_id=eq.${storeId}`);
+  const payables=await safeRest(s,`accounts_payable?select=id,supplier_id,purchase_id,amount,paid_amount,due_date,status,created_at&store_id=eq.${storeId}&status=neq.paid&order=due_date.asc.nullslast,created_at.asc`);
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers,apSummary,payables};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -318,7 +320,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers,apSummary:m.apSummary,payables:m.payables};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -977,7 +979,7 @@ function stat(l,v,s,d){return `<div class="stat"><div class="statlabel"><span cl
 function aiCard(ins,i){const bar=ins.tone==="alert"?BRAND.down:(ins.tone==="warn"?BRAND.amber:BRAND.up);return `<button class="acard" data-ai="${i}"><div class="abar" style="background:${bar}"></div><div class="abody"><div class="atop"><span class="aicon">${ins.icon}</span><div style="flex:1"><div class="atitle">${esc(ins.title)}</div><div class="adesc">${esc(ins.body)}</div>${ins.go?`<div class="ago">${esc(ins.go)} →</div>`:""}</div></div></div></button>`;}
 function topList(title,arr,unit){const top=arr.slice(0,3);return `<div class="mli" style="font-weight:700;color:var(--slate)"><span>${title}</span><span></span></div>`+(top.length?top.map(x=>`<div class="mli"><span>${esc(x.name)}</span><span class="q">${x.qty} ${unit}</span></div>`).join(""):`<div class="mli"><span class="q">ยังไม่มี</span></div>`);}
 
-const ENTITY_TH={sales_channels:"ช่องทางการขาย",inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on",production_recipes:"สูตรการผลิต",production_orders:"รายการผลิต",production_recipe_items:"วัตถุดิบสูตรผลิต",suppliers:"ผู้ขาย"};
+const ENTITY_TH={sales_channels:"ช่องทางการขาย",inventory_items:"วัตถุดิบ/บรรจุภัณฑ์",packaging_defaults:"ค่าเริ่มต้นบรรจุภัณฑ์",channel_prices:"ราคาตามช่องทาง",expense_categories:"หมวดค่าใช้จ่าย",cash_accounts:"บัญชีเงิน",expenses:"ค่าใช้จ่าย",platform_fee_settings:"GP/VAT ช่องทาง",order_financials:"การเงินออเดอร์",platform_ad_costs:"ค่าโฆษณาแอป",platform_settlements:"สรุปยอดแอป",ingredients:"วัตถุดิบ",ingredient_purchases:"การซื้อ",recipe_items:"สูตร",menu_items:"เมนู",categories:"หมวดหมู่",addons:"Add-on",addon_links:"การผูก Add-on",production_recipes:"สูตรการผลิต",production_orders:"รายการผลิต",production_recipe_items:"วัตถุดิบสูตรผลิต",suppliers:"ผู้ขาย",accounts_payable:"เจ้าหนี้",ap_payments:"การชำระเจ้าหนี้",item_purchase_units:"หน่วยซื้อ"};
 const FIELD_TH={name:"ชื่อ",name_en:"ชื่ออังกฤษ",kind:"ประเภทรายการ",price:"ราคาขาย",cost:"ต้นทุน/จาน",category:"หมวดหมู่",product_type:"ประเภท",is_active:"เปิดขาย/ใช้งาน",base_unit:"หน่วย",qty:"ปริมาณ",qty_base:"ปริมาณ",total_price:"ราคารวม",purchased_at:"วันที่ซื้อ",note:"หมายเหตุ",sort_order:"ลำดับ",color:"สี",ingredient_id:"วัตถุดิบ",inventory_item_id:"วัตถุดิบ",menu_item_id:"เมนู",addon_id:"Add-on"};
 const ACT_TH={INSERT:["เพิ่ม","#0E9F6E"],UPDATE:["แก้ไข","#F59E0B"],DELETE:["ลบ","#E02424"]};
 function auditVal(field,v){
@@ -1318,14 +1320,45 @@ function renderSettings(){
 // ===================== PHASE 6a: SUPPLIERS =====================
 function supplierById(id){return (state.data.suppliers||[]).find(s=>s.id===id)||null;}
 function renderSuppliers(){
-  const sups=state.data.suppliers||[];
+  const sups=state.data.suppliers||[];const apMap={};(state.data.apSummary||[]).forEach(a=>{apMap[a.supplier_id]=a;});
+  const totalAP=(state.data.apSummary||[]).reduce((s,a)=>s+Number(a.balance||0),0);
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🏪 ผู้ขาย / เจ้าหนี้</div></div>
-    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="addSup" style="margin-top:0">＋ เพิ่มผู้ขาย</button><div class="cmeta" style="margin-top:8px">ผูกผู้ขายกับการซื้อวัตถุดิบ เพื่อรองรับเครดิต/เจ้าหนี้ และวิเคราะห์ยอดซื้อ (เร็ว ๆ นี้)</div></div>
-    ${sups.length?sups.map(s=>`<div class="mmrow" style="margin:0 20px 9px"><button class="mmmain" data-sup="${s.id}"><div class="mmname">${esc(s.name)}${!s.active?` <span class="badge" style="background:#8882;color:#666;font-size:10px">ปิดใช้งาน</span>`:""}</div><div class="mmsub">${s.phone?esc(s.phone)+" · ":""}${s.default_terms_days!=null?`เครดิต ${s.default_terms_days} วัน`:"เงินสด"}${s.contact?" · "+esc(s.contact):""}</div></button><span class="chev">›</span></div>`).join(""):`<div class="empty">ยังไม่มีผู้ขาย — กด "＋ เพิ่มผู้ขาย"</div>`}
+    ${totalAP>0?`<div class="block" style="margin-bottom:10px;background:#fbf3ec;border:1px solid #f0d8c8"><div class="row"><b>เจ้าหนี้คงค้างรวม</b><b class="tnum" style="color:#c0392b;font-size:18px">${fmtTHB(totalAP)}</b></div><div class="cmeta" style="margin-top:3px">แตะผู้ขายที่มียอดค้างเพื่อชำระ</div></div>`:""}
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="addSup" style="margin-top:0">＋ เพิ่มผู้ขาย</button></div>
+    ${sups.length?sups.map(s=>{const ap=apMap[s.id],bal=ap?Number(ap.balance):0;return `<div class="block" style="margin:0 20px 9px;padding:0"><button class="mmmain" data-sup="${s.id}" style="width:100%;text-align:left;padding:13px 14px 6px"><div class="mmname">${esc(s.name)}${!s.active?` <span class="badge" style="background:#8882;color:#666;font-size:10px">ปิด</span>`:""}${bal>0?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:11px;font-weight:700">ค้าง ${fmtTHB(bal)}</span>`:""}</div><div class="mmsub">${s.phone?esc(s.phone)+" · ":""}${s.default_terms_days!=null?`เครดิต ${s.default_terms_days} วัน`:"เงินสด"}${ap&&ap.next_due?` · ครบกำหนด ${ap.next_due}`:""}</div></button>${bal>0?`<button class="ghostbtn" data-pay-sup="${s.id}" style="margin:0 14px 12px;width:calc(100% - 28px);color:${BRAND.orange}">💳 ดูบิล / ชำระเจ้าหนี้</button>`:""}</div>`;}).join(""):`<div class="empty">ยังไม่มีผู้ขาย — กด "＋ เพิ่มผู้ขาย"</div>`}
     <div style="height:30px"></div></div>`;
   document.getElementById("back").onclick=renderSettings;
   document.getElementById("addSup").onclick=()=>openSupplierSheet(null);
   document.querySelectorAll("[data-sup]").forEach(b=>b.onclick=()=>openSupplierSheet(supplierById(b.dataset.sup)));
+  document.querySelectorAll("[data-pay-sup]").forEach(b=>b.onclick=()=>openSupplierPayables(supplierById(b.dataset.paySup)));
+}
+function openSupplierPayables(sup){
+  const bills=(state.data.payables||[]).filter(p=>p.supplier_id===sup.id&&p.status!=="paid");
+  openSheet(`เจ้าหนี้: ${sup.name}`,`
+    ${bills.length?bills.map(p=>{const bal=Number(p.amount)-Number(p.paid_amount);const it=state.data.purchases.find(x=>x.id===p.purchase_id);const inv=it?state.data.inv.find(i=>i.id===it.inventory_item_id):null;
+      return `<div class="block" style="margin:0 0 8px"><div class="row"><span>${inv?esc(inv.name):"รายการซื้อ"} <span class="cmeta">${p.created_at?bkkDate(new Date(p.created_at)):""}</span></span><b class="tnum" style="color:#c0392b">${fmtTHB(bal)}</b></div><div class="cmeta" style="margin-top:2px">ยอดบิล ${fmtTHB(p.amount)}${Number(p.paid_amount)>0?` · จ่ายแล้ว ${fmtTHB(p.paid_amount)}`:""}${p.due_date?` · ครบกำหนด ${p.due_date}`:""} · ${p.status==="partial"?"จ่ายบางส่วน":"ค้างชำระ"}</div><button class="savebtn" data-pay="${p.id}" data-bal="${bal}" style="margin-top:8px">💳 ชำระบิลนี้</button></div>`;}).join(""):`<div class="cmeta">ไม่มีบิลค้างชำระ</div>`}
+    <div style="height:10px"></div>`);
+  document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>openPaySheet(b.dataset.pay,Number(b.dataset.bal),sup));
+}
+function openPaySheet(payableId,balance,sup){
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  openSheet("ชำระเจ้าหนี้",`
+    <div class="cmeta" style="margin-bottom:10px">ยอดค้าง <b style="color:#c0392b">${fmtTHB(balance)}</b> · ${esc(sup.name)}</div>
+    <div class="fhint">จ่ายจากบัญชี</div>
+    <select id="payAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>`<option value="${a.id}"${i===0?" selected":""}>${esc(a.name)}</option>`).join(""):`<option value="">— ยังไม่มีบัญชีเงิน —</option>`}</select>
+    <div class="fhint" style="margin-top:12px">จำนวนที่ชำระ (บาท)</div>
+    <input id="payAmt" class="nin" style="margin-top:6px" inputmode="decimal" value="${fmt2(balance)}"/>
+    <div class="cmeta" style="margin-top:4px">จ่ายเต็มหรือบางส่วนก็ได้ (ไม่เกินยอดค้าง)</div>
+    <button class="savebtn" id="payGo" style="margin-top:14px">ยืนยันชำระ</button>`);
+  document.getElementById("payGo").onclick=async()=>{
+    const acct=val("payAcct"),amt=parseFloat(val("payAmt"))||0;
+    if(!acct){toast("เลือกบัญชีเงิน");return;}
+    if(amt<=0){toast("ใส่จำนวนเงิน");return;}
+    if(amt>balance+0.001){toast("จ่ายเกินยอดค้าง");return;}
+    const btn=document.getElementById("payGo");btn.disabled=true;btn.textContent="กำลังชำระ…";
+    try{const res=await rpc(state.s,"pay_payable",{p_payable_id:payableId,p_cash_account:acct,p_amount:amt,p_note:null});await reloadData();closeSheet();toast(res.status==="paid"?"ชำระครบแล้ว ✓":`ชำระบางส่วนแล้ว · เหลือ ${fmtTHB(res.balance)}`);renderSuppliers();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันชำระ";}
+  };
 }
 function openSupplierSheet(sup){
   const isEdit=!!sup;
@@ -2219,33 +2252,75 @@ function renderPurchase(ing,existing){
   const dQty=isEdit?(existing.purchase_qty!=null?Number(existing.purchase_qty):Number(existing.qty_base)):"";
   const dTotal=isEdit?Number(existing.total_price):"";
   const dNote=isEdit&&existing.note?existing.note:"";
+  const hasAP=isEdit&&(state.data.payables||[]).some(p=>p.purchase_id===existing.id);
+  const locked=isEdit&&(existing.paid_at||existing.payment_type==="credit"||hasAP);
+  if(locked){
+    const sup=existing.supplier_id?supplierById(existing.supplier_id):null;
+    app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายการซื้อ (ล็อก)</div></div>
+      <div class="block"><div class="warnbox">🔒 รายการนี้กระทบเงินสด/เจ้าหนี้แล้ว จึงแก้ไข/ลบตรง ๆ ไม่ได้ (มาตรฐาน ERP) — ถ้าต้องแก้ ให้ยกเลิก/ย้อนรายการก่อน (ฟีเจอร์ย้อนรายการจะมาเร็ว ๆ นี้)</div>
+        <div class="row" style="margin-top:10px"><span>วัตถุดิบ</span><b>${esc(ing.name)}</b></div>
+        <div class="row" style="margin-top:4px"><span>ปริมาณ</span><b>${fmt2(existing.qty_base)} ${esc(ing.base_unit)}</b></div>
+        <div class="row" style="margin-top:4px"><span>ราคารวม</span><b class="tnum">${fmtTHB(existing.total_price)}</b></div>
+        <div class="row" style="margin-top:4px"><span>ผู้ขาย</span><b>${sup?esc(sup.name):"ไม่ระบุ"}</b></div>
+        <div class="row" style="margin-top:4px"><span>การชำระ</span><b style="color:${existing.payment_type==="credit"?"#c0392b":BRAND.up}">${existing.payment_type==="credit"?"เครดิต"+(existing.due_date?" · ครบกำหนด "+existing.due_date:""):"จ่ายแล้ว"}</b></div>
+      </div><div style="height:20px"></div></div>`;
+    document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
+    return;
+  }
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  const defSup=isEdit?existing.supplier_id:null;
+  const defPay=isEdit?(existing.payment_type||"paid"):"paid";
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">${isEdit?"แก้ไขการซื้อ":"บันทึกการซื้อ"}</div></div>
     <div class="block"><div class="selbox"><b>${esc(ing.name)}</b><div class="cmeta">หน่วยฐาน: ${esc(ing.base_unit)} · เลือกหน่วยซื้อได้ (ระบบแปลงเป็นหน่วยฐานให้)</div></div>
       <div class="fhint" style="margin-top:12px">วันที่ซื้อ</div><input type="date" id="puDate" class="nin" style="margin-top:6px" value="${dDate}"/>
       <div class="fhint" style="margin-top:12px">ปริมาณที่ซื้อ</div>
       <div style="display:flex;gap:8px;margin-top:6px"><input id="puQty" class="nin" style="margin-top:0;flex:1" inputmode="decimal" placeholder="เช่น 2" value="${dQty}"/><select id="puUnit" class="nin" style="margin-top:0;width:120px">${opts.map(o=>`<option value="${esc(o.unit)}"${o.unit===defUnit?" selected":""}>${esc(o.unit)}</option>`).join("")}</select></div>
       <input id="puTotal" class="nin" inputmode="decimal" placeholder="ราคารวมที่จ่าย (บาท) เช่น 1000" value="${dTotal}"/>
-      <input id="puNote" class="nin" placeholder="หมายเหตุ (ถ้ามี) เช่น ตลาดเช้า / ล็อตพิเศษ" value="${esc(dNote)}"/>
       <div class="costsum" id="puPreview" style="margin-top:10px"></div>
       <button class="ghostbtn" id="puMgUnit" style="margin-top:10px">⚙️ ตั้งค่าหน่วยซื้อของวัตถุดิบนี้</button></div>
+    <div class="blocktitle">ผู้ขาย & การชำระ</div>
+    <div class="block">
+      <div class="fhint">ผู้ขาย (ถ้ามี)</div>
+      <button type="button" class="nin" id="puSupBtn" style="margin-top:6px;text-align:left;display:flex;justify-content:space-between;align-items:center"><span id="puSupLbl">${defSup?esc((supplierById(defSup)||{}).name||"เลือก…"):"ไม่ระบุผู้ขาย"}</span><span style="opacity:.4">▾</span></button>
+      <input type="hidden" id="puSup" value="${defSup||""}"/>
+      <div class="fhint" style="margin-top:12px">การชำระ</div>
+      <div class="chips" id="puPay" style="margin-top:6px"><button type="button" class="chip ${defPay==="paid"?"active":""}" data-pay="paid">💵 จ่ายแล้ว (สด)</button><button type="button" class="chip ${defPay==="credit"?"active":""}" data-pay="credit">🧾 เครดิต (เจ้าหนี้)</button></div>
+      <div id="puPaidBox" style="margin-top:10px;${defPay==="paid"?"":"display:none"}"><div class="fhint">จ่ายจากบัญชี</div>
+        <select id="puAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>`<option value="${a.id}"${(isEdit&&existing.cash_account_id===a.id)||(!isEdit&&i===0)?" selected":""}>${esc(a.name)}</option>`).join(""):`<option value="">— ยังไม่มีบัญชีเงิน (ตั้งค่าที่ การเงิน) —</option>`}</select></div>
+      <div id="puCreditBox" style="margin-top:10px;${defPay==="credit"?"":"display:none"}"><div class="fhint">ครบกำหนดชำระ</div>
+        <input type="date" id="puDue" class="nin" style="margin-top:6px" value="${isEdit&&existing.due_date?existing.due_date:""}"/>
+        <div class="cmeta" style="margin-top:4px" id="puDueHint">เลือกผู้ขายที่มีเครดิตเทอม ระบบจะเติมวันครบกำหนดให้</div></div>
+      <input id="puNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ (ถ้ามี) เช่น เลขบิล / ล็อตพิเศษ" value="${esc(dNote)}"/>
+    </div>
     ${reasonBlock("rsnPur")}
     <div id="purSpacer" style="height:150px"></div><div class="savebar"><button class="savebtn" id="save">${isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ"}</button>${isEdit?`<button class="delbtn" id="delPur">ลบรายการซื้อนี้</button>`:""}</div></div>`;
   document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
   document.getElementById("puMgUnit").onclick=()=>openPurchaseUnitSheet(ing,()=>renderPurchase(state.data.inv.find(i=>i.id===ing.id),existing?state.data.purchases.find(p=>p.id===existing.id):undefined));
   wireReasonChips();
+  const applyDue=()=>{const sid=val("puSup"),sup=sid?supplierById(sid):null,terms=sup&&sup.default_terms_days!=null?sup.default_terms_days:null;const due=document.getElementById("puDue");if(terms!=null&&!due.value){const d=new Date(val("puDate")||bkkDate(new Date()));d.setDate(d.getDate()+terms);due.value=bkkDate(d);}};
+  document.getElementById("puSupBtn").onclick=()=>openPicker({title:"เลือกผู้ขาย",items:[{id:"",label:"ไม่ระบุผู้ขาย"}].concat((state.data.suppliers||[]).filter(s=>s.active!==false).map(s=>({id:s.id,label:s.name,sub:s.default_terms_days!=null?"เครดิต "+s.default_terms_days+" วัน":"เงินสด"}))),onCreate:q=>{closeSheet();openSupplierSheet(null);},createLabel:"เพิ่มผู้ขายใหม่…",createAlways:true,onPick:(id,it)=>{document.getElementById("puSup").value=id;document.getElementById("puSupLbl").textContent=id?it.label:"ไม่ระบุผู้ขาย";applyDue();}});
+  document.querySelectorAll("#puPay .chip").forEach(c=>c.onclick=()=>{const p=c.dataset.pay;document.querySelectorAll("#puPay .chip").forEach(x=>x.classList.toggle("active",x===c));document.getElementById("puPaidBox").style.display=p==="paid"?"":"none";document.getElementById("puCreditBox").style.display=p==="credit"?"":"none";if(p==="credit")applyDue();});
   const upd=()=>{const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,factor=factorOf(val("puUnit")),base=q*factor;const el=document.getElementById("puPreview");el.innerHTML=base>0&&tot>0?`= <b>${fmt2(base)} ${esc(ing.base_unit)}</b>${factor!==1?` <span class="cmeta">(${fmt2(q)} × ${fmt2(factor)})</span>`:""} · ต้นทุน ≈ <b>฿${fmt2(tot/base)}/${esc(ing.base_unit)}</b>`:`<span class="cmeta">กรอกปริมาณและราคาเพื่อดูต้นทุน/หน่วย</span>`;};
   ["puQty","puTotal","puUnit"].forEach(id=>{const el=document.getElementById(id);el.oninput=upd;el.onchange=upd;});upd();
   {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("purSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
   document.getElementById("save").onclick=async()=>{
     const q=parseFloat(val("puQty"))||0,tot=parseFloat(val("puTotal"))||0,date=val("puDate")||bkkDate(new Date()),note=val("puNote").trim()||null;
     const unit=val("puUnit"),factor=factorOf(unit),base=q*factor;
+    const pay=document.querySelector("#puPay .chip.active").dataset.pay,sup=val("puSup")||null,acct=val("puAcct")||null,due=val("puDue")||null;
     if(base<=0||tot<=0){toast("กรอกปริมาณและราคาให้ถูกต้อง");return;}
+    if(pay==="paid"&&!acct){toast("เลือกบัญชีเงินที่จ่าย หรือไปตั้งค่าบัญชีที่ การเงิน");return;}
+    if(pay==="credit"&&!sup){toast("ซื้อเครดิตต้องเลือกผู้ขาย (เพื่อบันทึกเจ้าหนี้)");return;}
     const btn=document.getElementById("save");btn.disabled=true;btn.textContent="กำลังบันทึก…";
     const payload={purchased_at:date,qty_base:base,total_price:tot,note,purchase_unit:unit,purchase_qty:q,purchase_factor:factor};
     try{
-      if(isEdit)await withReason(val("rsnPur"),()=>patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,payload));
-      else await withReason(val("rsnPur"),()=>post(state.s,"ingredient_purchases",{store_id:state.data.store.id,inventory_item_id:ing.id,...payload},"return=minimal"));
-      await reloadData();toast(isEdit?"แก้ไขการซื้อแล้ว — คำนวณต้นทุนใหม่แล้ว":"บันทึกการซื้อแล้ว");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
+      let pid;
+      if(isEdit){await withReason(val("rsnPur"),()=>patch(state.s,`ingredient_purchases?id=eq.${existing.id}`,payload));pid=existing.id;}
+      else{const r=await withReason(val("rsnPur"),()=>post(state.s,"ingredient_purchases",{store_id:state.data.store.id,inventory_item_id:ing.id,...payload},"return=representation"));pid=r[0].id;}
+      // สร้าง cash_movement (สด) / AP (เครดิต) ผ่าน RPC
+      await rpc(state.s,"finalize_purchase",{p_purchase_id:pid,p_payment_type:pay,p_cash_account:acct,p_supplier:sup,p_due_date:due});
+      await reloadData();
+      toast(pay==="paid"?"บันทึกซื้อ + ตัดเงินสดแล้ว":"บันทึกซื้อ (เครดิต) + สร้างเจ้าหนี้แล้ว");
+      renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
     }catch(e){toast(e.message);btn.disabled=false;btn.textContent=isEdit?"บันทึกการแก้ไข":"บันทึกการซื้อ";}
   };
   if(isEdit)document.getElementById("delPur").onclick=()=>{
