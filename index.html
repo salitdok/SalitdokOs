@@ -2378,12 +2378,14 @@ function openPurchaseUnitSheet(ing,onClose){
     const u=val("puNewUnit").trim(),f=parseFloat(val("puNewFactor"))||0,def=document.getElementById("puNewDef").checked;
     const rU=val("puRefUnit"),rF=parseFloat(val("puRefFactor"))||0;
     if(!u){toast("ใส่ชื่อหน่วย");return;}if(f<=0){toast("ใส่ค่าแปลง (factor) มากกว่า 0");return;}
+    if(u===ing.base_unit){toast(`"${u}" เป็นหน่วยฐานอยู่แล้ว ไม่ต้องเพิ่ม`);return;}
+    if((state.data.purchaseUnits||[]).some(p=>p.inventory_item_id===ing.id&&p.unit===u)){toast(`มีหน่วย "${u}" อยู่แล้ว — ลบอันเดิมก่อน หรือใช้ชื่ออื่น`);return;}
     if((rU&&rF<=0)||(!rU&&rF>0)){toast("หน่วยอ้างอิง: ใส่ทั้งจำนวนและหน่วย หรือเว้นทั้งคู่");return;}
     const btn=document.getElementById("puAddUnit");btn.disabled=true;btn.textContent="กำลังเพิ่ม…";
     try{if(def){await patch(state.s,`item_purchase_units?inventory_item_id=eq.${ing.id}`,{is_default:false});}
       await post(state.s,"item_purchase_units",{store_id:state.data.store.id,inventory_item_id:ing.id,unit:u,factor:f,is_default:def,ref_unit:rU||null,ref_factor:rU?rF:null,sort_order:(state.data.purchaseUnits||[]).filter(p=>p.inventory_item_id===ing.id).length},"return=minimal");
       await reloadData();closeSheet();openPurchaseUnitSheet(state.data.inv.find(i=>i.id===ing.id),onClose);toast("เพิ่มหน่วยซื้อแล้ว");
-    }catch(e){toast(e.message);btn.disabled=false;btn.textContent="เพิ่มหน่วยซื้อ";}
+    }catch(e){toast("เพิ่มไม่สำเร็จ: "+e.message);btn.disabled=false;btn.textContent="เพิ่มหน่วยซื้อ";}
   };
 }
 function openAdd(preCustId){draft={editId:null,customer:{mode:"search"},cart:{},source:"manual",orderedAt:toLocalInput(new Date())};if(preCustId){const c=state.data.customers.find(x=>x.id===preCustId);if(c)draft.customer={mode:"existing",id:c.id,name:c.name,c};}renderAdd();}
