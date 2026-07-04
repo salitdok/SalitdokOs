@@ -285,7 +285,7 @@ async function loadMaster(s,storeId){
   const links=await rest(s,`addon_links?select=id,addon_id,menu_item_id,category&store_id=eq.${storeId}`);
   let inv=await safeRest(s,`inventory_items?select=id,name,kind,base_unit,reorder_level,is_produced,shelf_life_days,archived_at&store_id=eq.${storeId}&archived_at=is.null&order=name.asc`);
   if(!inv.length){const ing=await safeRest(s,`ingredients?select=id,name,base_unit&store_id=eq.${storeId}&order=name.asc`);inv=ing.map(i=>({...i,kind:"food"}));}
-  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note,purchase_unit,purchase_qty,purchase_factor,supplier_id,payment_type,cash_account_id,due_date,paid_at&store_id=eq.${storeId}&order=purchased_at.desc`);
+  const purRaw=await safeRest(s,`ingredient_purchases?select=id,inventory_item_id,ingredient_id,purchased_at,qty_base,total_price,note,purchase_unit,purchase_qty,purchase_factor,supplier_id,payment_type,cash_account_id,due_date,paid_at,reversed_at,reverse_reason&store_id=eq.${storeId}&order=purchased_at.desc`);
   const purchases=purRaw.map(p=>({...p,item_id:p.inventory_item_id||p.ingredient_id}));
   const recRaw=await safeRest(s,`recipe_items?select=id,menu_item_id,addon_id,inventory_item_id,ingredient_id,qty&store_id=eq.${storeId}`);
   const recipes=recRaw.map(r=>({...r,item_id:r.inventory_item_id||r.ingredient_id}));
@@ -1935,7 +1935,7 @@ function renderIngredientEdit(ing){
     ${ing?`<div class="block"><div class="costsum">ต้นทุนเฉลี่ยเดือนนี้ ≈ <b>${avg>0?"฿"+fmt2(avg)+"/"+esc(ing.base_unit):"ยังไม่มีข้อมูลซื้อ"}</b></div></div>
     <div class="blocktitle">ประวัติการซื้อ</div>
     <div class="block"><button class="ghostbtn" id="addPur" style="margin-top:0">＋ บันทึกการซื้อ</button>
-      ${purchases.length?purchases.map(p=>{const pu=(p.purchase_unit&&p.purchase_unit!==ing.base_unit&&p.purchase_qty!=null)?`${fmt2(p.purchase_qty)} ${esc(p.purchase_unit)} (× ${fmt2(p.purchase_factor||1)}) = `:"";const puDef=(state.data.purchaseUnits||[]).find(x=>x.inventory_item_id===ing.id&&x.unit===p.purchase_unit);const refTxt=(puDef&&puDef.ref_unit&&puDef.ref_factor&&p.purchase_qty!=null)?` · <span style="opacity:.75">อ้างอิง ${fmt2(Number(p.purchase_qty)*Number(puDef.ref_factor))} ${esc(puDef.ref_unit)}</span>`:"";return `<button class="mres" data-pur="${p.id}" style="margin-top:8px"><div class="row"><div class="recname">${esc(String(p.purchased_at))}</div><div class="tnum" style="font-weight:700">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${pu}${fmt2(p.qty_base)} ${esc(ing.base_unit)}${refTxt} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">แก้ไข ›</span></div></button>`;}).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+ประเภท+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
+      ${purchases.length?purchases.map(p=>{const rev=!!p.reversed_at;const pu=(p.purchase_unit&&p.purchase_unit!==ing.base_unit&&p.purchase_qty!=null)?`${fmt2(p.purchase_qty)} ${esc(p.purchase_unit)} (× ${fmt2(p.purchase_factor||1)}) = `:"";const puDef=(state.data.purchaseUnits||[]).find(x=>x.inventory_item_id===ing.id&&x.unit===p.purchase_unit);const refTxt=(puDef&&puDef.ref_unit&&puDef.ref_factor&&p.purchase_qty!=null)?` · <span style="opacity:.75">อ้างอิง ${fmt2(Number(p.purchase_qty)*Number(puDef.ref_factor))} ${esc(puDef.ref_unit)}</span>`:"";return `<button class="mres" data-pur="${p.id}" style="margin-top:8px${rev?";opacity:.6":""}"><div class="row"><div class="recname">${esc(String(p.purchased_at))}${rev?` <span class="badge" style="background:#c0392b22;color:#c0392b;font-size:10px">ยกเลิกแล้ว</span>`:""}</div><div class="tnum" style="font-weight:700${rev?";text-decoration:line-through":""}">${fmtTHB(p.total_price)}</div></div><div class="cmeta" style="margin-top:3px">${pu}${fmt2(p.qty_base)} ${esc(ing.base_unit)}${refTxt} · ฿${fmt2(Number(p.total_price)/Number(p.qty_base||1))}/${esc(ing.base_unit)}${p.note?` · ${esc(p.note)}`:""} <span style="color:${BRAND.orange};font-weight:700">${rev?"ดู ›":"แก้ไข ›"}</span></div></button>`;}).join(""):`<div class="cmeta" style="margin-top:8px">ยังไม่มีการซื้อ</div>`}</div>`:`<div class="block"><div class="cmeta">บันทึกชื่อ+ประเภท+หน่วยก่อน แล้วค่อยบันทึกการซื้อเพื่อให้ระบบคำนวณราคาเฉลี่ย</div></div>`}
     ${ing?reasonBlock("rsnIng"):""}
     <div id="ingSpacer" style="height:180px"></div>
     <div class="savebar"><button class="savebtn" id="save">${isNew?"เพิ่มรายการ":"บันทึก"}</button>${!isNew?`<button class="ghostbtn" id="auditIng">🧾 ดูประวัติการแก้ไขรายการนี้</button><button class="delbtn" id="del">ลบรายการนี้</button>`:""}</div></div>`;
@@ -1951,7 +1951,7 @@ function renderIngredientEdit(ing){
     const bw=document.getElementById("btnWaste");if(bw)bw.onclick=()=>adjustStockSheet(ing,"waste");
     const bh=document.getElementById("btnHist");if(bh)bh.onclick=()=>openStockHistory(ing);}
 }
-const SM_KIND={purchase:["ซื้อเข้า","#0E9F6E"],sale:["ขายออก","#c0392b"],waste:["ของเสีย","#c0392b"],adjust:["ปรับสต็อก","#2563EB"]};
+const SM_KIND={purchase:["ซื้อเข้า","#0E9F6E"],purchase_reverse:["ยกเลิกซื้อ","#c0392b"],sale:["ขายออก","#c0392b"],waste:["ของเสีย","#c0392b"],adjust:["ปรับสต็อก","#2563EB"],produce_in:["ผลิตเข้า","#E67E22"],produce_out:["ใช้ผลิต","#c0392b"],produce_waste:["ของเสียผลิต","#c0392b"]};
 const SM_REF={purchase:"Purchase",order_item:"Order",order_item_addon:"Order (add-on)",order_packaging:"Order (บรรจุภัณฑ์)",manual:"ปรับมือ"};
 async function openStockHistory(ing){
   openSheet("ประวัติการเคลื่อนไหว · "+ing.name,`<div class="empty">กำลังโหลด…</div>`);
@@ -2282,18 +2282,35 @@ function renderPurchase(ing,existing){
   const dTotal=isEdit?Number(existing.total_price):"";
   const dNote=isEdit&&existing.note?existing.note:"";
   const hasAP=isEdit&&(state.data.payables||[]).some(p=>p.purchase_id===existing.id);
-  const locked=isEdit&&(existing.paid_at||existing.payment_type==="credit"||hasAP);
+  const isReversed=isEdit&&existing.reversed_at;
+  const locked=isEdit&&(existing.paid_at||existing.payment_type==="credit"||hasAP||isReversed);
   if(locked){
     const sup=existing.supplier_id?supplierById(existing.supplier_id):null;
-    app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายการซื้อ (ล็อก)</div></div>
-      <div class="block"><div class="warnbox">🔒 รายการนี้กระทบเงินสด/เจ้าหนี้แล้ว จึงแก้ไข/ลบตรง ๆ ไม่ได้ (มาตรฐาน ERP) — ถ้าต้องแก้ ให้ยกเลิก/ย้อนรายการก่อน (ฟีเจอร์ย้อนรายการจะมาเร็ว ๆ นี้)</div>
+    app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">รายการซื้อ${isReversed?" (ยกเลิกแล้ว)":" (ล็อก)"}</div></div>
+      <div class="block"><div class="warnbox"${isReversed?' style="background:#f5e6e6;border-color:#e0b0b0"':''}>${isReversed?`❌ รายการนี้ถูกยกเลิก/ย้อนแล้ว เมื่อ ${bkkDateTime(new Date(existing.reversed_at))}${existing.reverse_reason?" · เหตุผล: "+esc(existing.reverse_reason):""} — คืนสต็อกและเงินเรียบร้อย (เก็บไว้เป็นประวัติ)`:"🔒 รายการนี้กระทบเงินสด/เจ้าหนี้แล้ว จึงแก้ไข/ลบตรง ๆ ไม่ได้ (มาตรฐาน ERP) — ยกเลิกได้ด้วยการย้อนรายการ (คืนสต็อก+เงิน)"}</div>
         <div class="row" style="margin-top:10px"><span>วัตถุดิบ</span><b>${esc(ing.name)}</b></div>
         <div class="row" style="margin-top:4px"><span>ปริมาณ</span><b>${fmt2(existing.qty_base)} ${esc(ing.base_unit)}</b></div>
         <div class="row" style="margin-top:4px"><span>ราคารวม</span><b class="tnum">${fmtTHB(existing.total_price)}</b></div>
         <div class="row" style="margin-top:4px"><span>ผู้ขาย</span><b>${sup?esc(sup.name):"ไม่ระบุ"}</b></div>
         <div class="row" style="margin-top:4px"><span>การชำระ</span><b style="color:${existing.payment_type==="credit"?"#c0392b":BRAND.up}">${existing.payment_type==="credit"?"เครดิต"+(existing.due_date?" · ครบกำหนด "+existing.due_date:""):"จ่ายแล้ว"}</b></div>
-      </div><div style="height:20px"></div></div>`;
+      </div>
+      ${!isReversed?`<div class="block"><button class="delbtn" id="revPur" style="margin-top:0">↩️ ยกเลิก / ย้อนรายการซื้อนี้</button><div class="cmeta" style="margin-top:8px">ระบบจะคืนสต็อก (สร้างรายการกลับทิศ) + คืนเงินเข้าบัญชีเดิม (หรือยกเลิกเจ้าหนี้) · รายการเดิมยังอยู่เป็นประวัติ</div></div>`:""}
+      <div style="height:20px"></div></div>`;
     document.getElementById("back").onclick=()=>renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));
+    if(!isReversed){document.getElementById("revPur").onclick=()=>{
+      const box=document.querySelector(".addwrap");
+      openSheet("ยกเลิก/ย้อนรายการซื้อ",`
+        <div class="warnbox" style="margin-bottom:12px">ยืนยันยกเลิกการซื้อ <b>${esc(ing.name)}</b> · ${fmt2(existing.qty_base)} ${esc(ing.base_unit)} · ${fmtTHB(existing.total_price)}<br><br>ระบบจะ:<br>• คืนสต็อก −${fmt2(existing.qty_base)} ${esc(ing.base_unit)}<br>• ${existing.payment_type==="credit"?"ยกเลิกเจ้าหนี้ (คืนเงินที่จ่ายแล้วถ้ามี)":"คืนเงิน "+fmtTHB(existing.total_price)+" เข้าบัญชีเดิม"}</div>
+        <div class="fhint">เหตุผลการยกเลิก</div>
+        <input id="revReason" class="nin" style="margin-top:6px" placeholder="เช่น ซื้อผิด / คืนของ / กรอกผิด"/>
+        <button class="delbtn" id="revGo" style="margin-top:14px">ยืนยันยกเลิกรายการ</button>`);
+      document.getElementById("revGo").onclick=async()=>{
+        const reason=val("revReason").trim();if(!reason){toast("กรอกเหตุผลการยกเลิก");return;}
+        const btn=document.getElementById("revGo");btn.disabled=true;btn.textContent="กำลังย้อนรายการ…";
+        try{await rpc(state.s,"reverse_purchase",{p_purchase_id:existing.id,p_reason:reason});await reloadData();closeSheet();toast("ยกเลิกรายการซื้อแล้ว — คืนสต็อก+เงินเรียบร้อย");renderIngredientEdit(state.data.inv.find(i=>i.id===ing.id));}
+        catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันยกเลิกรายการ";}
+      };
+    };}
     return;
   }
   const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
