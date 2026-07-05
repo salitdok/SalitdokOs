@@ -260,7 +260,7 @@ async function verifyPassword(email,password){let r;try{r=await fetch(CONFIG.SUP
 // แยกจาก loadAll เดิมเพื่อให้แต่ละหน้าโหลดเฉพาะส่วนได้ในอนาคต
 // ขั้นนี้ยังเรียกแบบ sequential ผ่าน loadAll() เพื่อคงพฤติกรรมเดิมทุกอย่าง
 async function loadStore(s){
-  const stores=await rest(s,"stores?select=id,name,timezone,settings&limit=1");
+  const stores=await rest(s,"stores?select=id,name,timezone,settings,opening_completed_at&limit=1");
   if(!stores.length)throw new Error("ไม่พบร้าน — ล็อกอินด้วย user เจ้าของร้าน");
   return stores[0];
 }
@@ -311,8 +311,16 @@ async function loadMaster(s,storeId){
   const purchaseUnits=await safeRest(s,`item_purchase_units?select=id,inventory_item_id,unit,factor,is_default,sort_order,active,ref_unit,ref_factor&store_id=eq.${storeId}&active=eq.true&order=sort_order.asc`);
   const suppliers=await safeRest(s,`suppliers?select=id,name,phone,contact,tax_id,default_terms_days,note,active&store_id=eq.${storeId}&archived_at=is.null&order=name.asc`);
   const apSummary=await safeRest(s,`v_ap_summary?select=supplier_id,supplier_name,open_bills,balance,next_due&store_id=eq.${storeId}`);
-  const payables=await safeRest(s,`accounts_payable?select=id,supplier_id,purchase_id,amount,paid_amount,due_date,status,created_at&store_id=eq.${storeId}&status=neq.paid&order=due_date.asc.nullslast,created_at.asc`);
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers,apSummary,payables};
+  const payables=await safeRest(s,`accounts_payable?select=id,supplier_id,purchase_id,amount,paid_amount,due_date,status,origin,created_at&store_id=eq.${storeId}&status=neq.paid&order=due_date.asc.nullslast,created_at.asc`);
+  const openingHead=await safeRest(s,`opening_balances?select=id,opening_date,owner_investment,owner_investment_account_id,ar_opening_amount,ar_opening_note,status,confirmed_at&store_id=eq.${storeId}&order=created_at.desc&limit=1`);
+  const ob=openingHead&&openingHead[0]?openingHead[0]:null;
+  let obCashLines=[],obStockLines=[],obApLines=[];
+  if(ob&&ob.status==="draft"){
+    obCashLines=await safeRest(s,`opening_balance_cash_lines?select=id,cash_account_id,amount&opening_balance_id=eq.${ob.id}`);
+    obStockLines=await safeRest(s,`opening_balance_stock_lines?select=id,inventory_item_id,qty_base,unit_cost&opening_balance_id=eq.${ob.id}`);
+    obApLines=await safeRest(s,`opening_balance_ap_lines?select=id,supplier_id,amount,due_date,note&opening_balance_id=eq.${ob.id}`);
+  }
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers,apSummary,payables,openingBalance:ob,obCashLines,obStockLines,obApLines};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -320,7 +328,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers,apSummary:m.apSummary,payables:m.payables};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers,apSummary:m.apSummary,payables:m.payables,openingBalance:m.openingBalance,obCashLines:m.obCashLines,obStockLines:m.obStockLines,obApLines:m.obApLines};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -904,6 +912,7 @@ function renderDash(){
       <div class="cmprow">${deltaPill("เทียบเมื่อวาน",f.deltaY)}${deltaPill("เทียบสัปดาห์ก่อน",f.deltaW)}</div>
       <div class="spark">${f.spark.map(x=>`<div class="bar" style="height:${Math.max(3,(x.sales/mx)*40)}px;background:${x.isToday?BRAND.orange:"#2c355a"}"></div>`).join("")}</div>
     </div>
+    ${openingBannerHTML()}
     <div class="sec"><div class="sectitle">🔥 วันนี้</div>
       <div class="kpi3">${kpi("ออเดอร์",f.today.count,"")}${kpi("เฉลี่ย/บิล",fmtTHB(f.avgBill),"")}${kpi("กำไรขั้นต้น",fmtTHB(f.gpToday),"ยอด − COGS")}</div>
       <div class="kpi3">${kpi("Food Cost",fmtTHB(f.foodToday),"FC "+f.fcToday+"%")}${kpi("Packaging",fmtTHB(f.pkgToday),"บรรจุภัณฑ์")}${kpi("Consumable",fmtTHB(f.conToday),"วัสดุสิ้นเปลือง")}</div>
@@ -967,6 +976,7 @@ function renderDash(){
   document.querySelectorAll("[data-lowstock]").forEach(b=>b.onclick=()=>{const it=state.data.inv.find(i=>i.id===b.dataset.lowstock);state.menuSeg="ingredients";it?renderIngredientEdit(it):navigate("menu");});
   {const tp=document.getElementById("toPL");if(tp)tp.onclick=()=>{state.reportTab="pl";navigate("reports");};}
   document.getElementById("settings").onclick=renderSettings;
+  {const ob=document.getElementById("openingBanner");if(ob)ob.onclick=startOpeningWizard;}
   document.querySelectorAll("[data-loyal-cid]").forEach(b=>b.onclick=()=>{const c=state.data.customers.find(x=>x.id===b.dataset.loyalCid);if(c)renderCustomerDetail(c);});
   document.querySelectorAll("[data-ai]").forEach(b=>b.onclick=()=>handleAction(state.aiActions[+b.dataset.ai].action));
   document.getElementById("qaOrder").onclick=()=>{state.prev="dash";openAdd();};
@@ -1295,13 +1305,15 @@ function renderSettings(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ตั้งค่า</div></div>
     <div class="setrow"><div class="mmname">${esc(state.data.store.name)}</div><div class="mmsub">${esc(state.s.email)}</div></div>
     <div class="block"><div class="cmeta">ต้นทุน/กำไรคำนวณจากสูตรวัตถุดิบ × ราคาเฉลี่ยของเดือน (ตั้งในแท็บเมนู → วัตถุดิบ และในแต่ละเมนู → สูตรต้นทุน)</div></div>
+    <div class="blocktitle">เริ่มต้นใช้งาน</div>
+    <div class="block"><button class="ghostbtn" id="openingSetup" style="margin-top:0">${state.data.store.opening_completed_at?"✅ ยอดยกมา (ตั้งค่าแล้ว)":"📥 ตั้งค่ายอดยกมา (Opening Balance)"}</button><div class="cmeta" style="margin-top:8px">${state.data.store.opening_completed_at?"ยืนยันยอดยกมาแล้วเมื่อ "+bkkDate(new Date(state.data.store.opening_completed_at))+" · ดูสรุปได้ · แก้ไขต้องผ่านศูนย์รีเซ็ต":"เงินลงทุน · เงินสด · สต็อก · เจ้าหนี้ ตั้งต้นก่อนเริ่มใช้จริง — ทำครั้งเดียว ไม่กระทบ P&L"}</div></div>
     <div class="blocktitle">ช่องทางการขาย</div>
     <div class="block"><button class="ghostbtn" id="channels" style="margin-top:0">🧭 ช่องทางการขาย (Sales Channels)</button><div class="cmeta" style="margin-top:8px">เพิ่ม/แก้/ปิด ช่องทาง เช่น Grab/LINE MAN/Shopee/หน้าร้าน — ตั้งชื่อ สี โลโก้ GP% VAT% ได้เอง ทุกโมดูลอ้างอิงจากที่นี่</div></div>
     <div class="blocktitle">ต้นทุน</div>
     <div class="block"><button class="ghostbtn" id="pkgdef" style="margin-top:0">📦 ค่าเริ่มต้นบรรจุภัณฑ์ (ตามช่องทาง/เมนู)</button><div class="cmeta" style="margin-top:8px">ตั้งว่าแต่ละช่องทาง/เมนู ให้เติมกล่อง/ช้อน/ถุง อะไรอัตโนมัติตอนเปิดออเดอร์ — แก้เองได้เสมอก่อนบันทึก</div></div>
     <div class="blocktitle">การเงิน</div>
     <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="finance" style="margin-top:0">💰 บัญชี / การเงิน (GP·VAT · ค่าใช้จ่าย · บัญชีเงิน)</button><div class="cmeta" style="margin-top:8px">ตั้งค่าธรรมเนียมแอป (GP/VAT) ต่อช่องทาง · หมวดค่าใช้จ่าย · บัญชีเงิน · บันทึกค่าใช้จ่าย เพื่อให้เห็นกำไรสุทธิจริง</div></div>
-    <div class="block"><button class="ghostbtn" id="suppliers" style="margin-top:0">🏪 ผู้ขาย / เจ้าหนี้ (Supplier)</button><div class="cmeta" style="margin-top:8px">จัดการรายชื่อผู้ขาย/ซัพพลายเออร์ · เครดิตเทอม · ใช้ผูกกับการซื้อวัตถุดิบ (เร็ว ๆ นี้: เจ้าหนี้ + ชำระเงิน)</div></div>
+    <div class="block"><button class="ghostbtn" id="suppliers" style="margin-top:0">🏪 ผู้ขาย / เจ้าหนี้ (Supplier)</button><div class="cmeta" style="margin-top:8px">จัดการรายชื่อผู้ขาย/ซัพพลายเออร์ · เครดิตเทอม · ใช้ผูกกับการซื้อวัตถุดิบ · เจ้าหนี้ + ชำระเงิน</div></div>
     <div class="blocktitle">การตรวจสอบ</div>
     <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
@@ -1314,6 +1326,7 @@ function renderSettings(){
   document.getElementById("suppliers").onclick=renderSuppliers;
   document.getElementById("channels").onclick=renderChannels;
   document.getElementById("resetc").onclick=renderResetCenter;
+  document.getElementById("openingSetup").onclick=()=>{if(state.data.store.opening_completed_at)renderOpeningSummary();else startOpeningWizard();};
   document.getElementById("logout").onclick=()=>doLogout();
 }
 // ===== ศูนย์รีเซ็ตข้อมูล (Data Reset Center) =====
@@ -1389,6 +1402,239 @@ function openSupplierSheet(sup){
     catch(e){toast("ลบไม่ได้ (อาจมีการซื้อผูกอยู่) — ปิดใช้งานแทนได้");}
   };
 }
+// ===================== PHASE 6: OPENING BALANCE WIZARD =====================
+// Single Source of Truth: cash/stock/AP opening = ledger movements (kind='opening')
+// สร้าง draft header ทันที · auto-save ทุก "ถัดไป" · commit atomic ผ่าน confirm_opening_balance
+let obWiz=null; // {id, step, date, ownerAmt, ownerAcct, cash:{acctId:amt}, stock:[{item_id,qty,cost}], ap:[{supplier_id,amount,due_date,note}], arAmt, arNote}
+
+function openingBannerHTML(){
+  if(!state.data||!state.data.store)return "";
+  if(state.data.store.opening_completed_at)return "";
+  const hasDraft=state.data.openingBalance&&state.data.openingBalance.status==="draft";
+  return `<div class="sec" style="margin-top:16px"><button class="acard" id="openingBanner" style="width:100%"><div class="abar" style="background:${BRAND.amber}"></div><div class="abody"><div class="atop"><span class="aicon">📥</span><div style="flex:1"><div class="atitle">ยังไม่ได้ตั้งค่ายอดยกมา</div><div class="adesc">ตั้งเงินลงทุน · เงินสด · สต็อก · เจ้าหนี้ ตั้งต้น ก่อนเริ่มใช้จริง (ไม่กระทบ P&L)</div><div class="ago">${hasDraft?"ทำต่อจากที่ค้างไว้":"เริ่มตั้งค่า"} →</div></div></div></div></button></div>`;
+}
+
+async function startOpeningWizard(){
+  if(state.data.store.opening_completed_at){renderOpeningSummary();return;}
+  try{
+    let head=state.data.openingBalance;
+    if(head&&head.status==="draft"){
+      // resume
+      const cash={};(state.data.obCashLines||[]).forEach(l=>{cash[l.cash_account_id]=Number(l.amount);});
+      obWiz={id:head.id,step:1,date:head.opening_date||bkkDate(new Date()),ownerAmt:Number(head.owner_investment)||0,ownerAcct:head.owner_investment_account_id||"",
+        cash,stock:(state.data.obStockLines||[]).map(l=>({item_id:l.inventory_item_id,qty:Number(l.qty_base),cost:Number(l.unit_cost)})),
+        ap:(state.data.obApLines||[]).map(l=>({supplier_id:l.supplier_id,amount:Number(l.amount),due_date:l.due_date||"",note:l.note||""})),
+        arAmt:head.ar_opening_amount!=null?Number(head.ar_opening_amount):0,arNote:head.ar_opening_note||""};
+    }else{
+      // create fresh draft
+      const r=await post(state.s,"opening_balances",{store_id:state.data.store.id,opening_date:bkkDate(new Date()),owner_investment:0,status:"draft"},"return=representation");
+      obWiz={id:r[0].id,step:1,date:r[0].opening_date,ownerAmt:0,ownerAcct:"",cash:{},stock:[],ap:[],arAmt:0,arNote:""};
+      await reloadData();
+    }
+    renderOpeningWizard();
+  }catch(e){toast(e.message);}
+}
+
+function obStepTitles(){return ["วันที่เริ่มระบบ","เงินลงทุนเจ้าของ","เงินสด/ธนาคาร","สต็อกวัตถุดิบ","กึ่งสำเร็จ/บรรจุภัณฑ์/วัสดุ","เจ้าหนี้ตั้งต้น","สรุป + ตรวจสมดุล"];}
+
+function renderOpeningWizard(){
+  const step=obWiz.step,titles=obStepTitles(),total=titles.length;
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="obBack">‹</button><div class="ptitle" style="font-size:18px">ยอดยกมา · ${step}/${total}</div></div>
+    <div class="block" style="margin-bottom:8px"><div style="display:flex;gap:4px">${titles.map((t,i)=>`<div style="flex:1;height:5px;border-radius:99px;background:${i<step?BRAND.orange:"#e2ddd4"}"></div>`).join("")}</div><div class="cmeta" style="margin-top:8px;font-weight:700;color:var(--ink)">ขั้นที่ ${step}: ${titles[step-1]}</div></div>
+    <div id="obBody"></div>
+    <div id="obSpacer" style="height:120px"></div>
+    <div class="savebar"><div style="display:flex;gap:8px">${step>1?`<button class="ghostbtn" id="obPrev" style="margin-top:0;flex:1">‹ ย้อนกลับ</button>`:""}<button class="savebtn" id="obNext" style="flex:2">${step<total?"ถัดไป ›":"ตรวจสอบ & ยืนยัน"}</button></div></div></div>`;
+  document.getElementById("obBack").onclick=()=>{if(confirm("ออกจากตัวช่วยตั้งค่า? ข้อมูลที่บันทึกไว้ (กด 'ถัดไป' แล้ว) จะยังอยู่ กลับมาทำต่อได้"))navigate("dash");};
+  if(document.getElementById("obPrev"))document.getElementById("obPrev").onclick=async()=>{await obSaveStep();obWiz.step--;renderOpeningWizard();};
+  document.getElementById("obNext").onclick=obNext;
+  const body=document.getElementById("obBody");
+  if(step===1)obRenderStep1(body);
+  else if(step===2)obRenderStep2(body);
+  else if(step===3)obRenderStep3(body);
+  else if(step===4)obRenderStock(body,["food"],"วัตถุดิบอาหาร");
+  else if(step===5)obRenderStock(body,["semi","packaging","supply"],"กึ่งสำเร็จ / บรรจุภัณฑ์ / วัสดุสิ้นเปลือง");
+  else if(step===6)obRenderStep6(body);
+  else obRenderStep7(body);
+  {const _sb=document.querySelector(".savebar"),_sp=document.getElementById("obSpacer");if(_sb&&_sp)_sp.style.height=(_sb.offsetHeight+28)+"px";}
+}
+
+// ---- Step 1: date ----
+function obRenderStep1(body){
+  body.innerHTML=`<div class="block"><div class="cmeta" style="margin-bottom:10px">วันที่เริ่มใช้ระบบ — ยอดทั้งหมดจะถูกบันทึกเป็นยอด ณ วันนี้ (ปกติคือวันที่เปิดร้าน หรือวันที่เริ่มใช้แอป)</div>
+    <div class="fhint">วันที่เริ่มระบบ</div><input type="date" id="obDate" class="nin" style="margin-top:6px" value="${esc(obWiz.date)}"/></div>`;
+}
+// ---- Step 2: owner investment ----
+function obRenderStep2(body){
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  body.innerHTML=`<div class="block"><div class="cmeta" style="margin-bottom:10px">เงินลงทุนของเจ้าของที่ใส่เข้าร้าน (ทุนตั้งต้น) — บันทึกเป็นเงินจริงเข้าบัญชี แต่<b>ไม่นับเป็นรายได้</b> (ไม่เข้า P&L)</div>
+    <div class="fhint">จำนวนเงินลงทุน (บาท) — ไม่มีใส่ 0</div><input id="obOwnerAmt" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="0" value="${obWiz.ownerAmt||""}"/>
+    <div id="obOwnerAcctBox" style="margin-top:12px;${obWiz.ownerAmt>0?"":"display:none"}"><div class="fhint">รับเงินลงทุนเข้าบัญชีไหน</div>
+      <select id="obOwnerAcct" class="nin" style="margin-top:6px">${accts.length?`<option value="">— เลือกบัญชี —</option>`+accts.map(a=>`<option value="${a.id}"${obWiz.ownerAcct===a.id?" selected":""}>${esc(a.name)}</option>`).join(""):`<option value="">— ยังไม่มีบัญชีเงิน (สร้างที่ การเงิน) —</option>`}</select></div>
+    ${!accts.length?`<div class="cmeta" style="margin-top:8px;color:#c0392b">⚠️ ยังไม่มีบัญชีเงิน — ถ้าจะใส่เงินลงทุน ต้องไปสร้างบัญชีที่ ตั้งค่า → การเงิน ก่อน</div>`:""}</div>`;
+  const amt=document.getElementById("obOwnerAmt");amt.oninput=()=>{const v=parseFloat(amt.value)||0;document.getElementById("obOwnerAcctBox").style.display=v>0?"":"none";};
+}
+// ---- Step 3: cash accounts ----
+function obRenderStep3(body){
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  if(!accts.length){body.innerHTML=`<div class="block"><div class="empty">ยังไม่มีบัญชีเงิน<br>ไปสร้างที่ ตั้งค่า → การเงิน → ＋ บัญชีเงิน ก่อน แล้วกลับมาทำต่อ</div></div>`;return;}
+  body.innerHTML=`<div class="block"><div class="cmeta" style="margin-bottom:10px">ยอดเงินสด/ธนาคารที่มีอยู่จริง ณ วันเริ่มระบบ <b>ไม่รวมเงินลงทุนที่เพิ่งกรอกใน Step 2</b> (ระบบจะรวมให้เองตอนสรุป) — ร้านเปิดใหม่ส่วนใหญ่ใส่ 0</div>
+    ${accts.map(a=>`<div style="margin-bottom:12px"><div class="fhint">${esc(a.name)} <span style="opacity:.6">(${CASH_TYPE[a.type]||a.type})</span></div><input class="nin obCash" data-acct="${a.id}" style="margin-top:6px" inputmode="decimal" placeholder="0" value="${obWiz.cash[a.id]!=null?obWiz.cash[a.id]:""}"/></div>`).join("")}</div>`;
+}
+// ---- Step 4/5: stock ----
+function obRenderStock(body,kinds,label){
+  const items=state.data.inv.filter(i=>kinds.includes(i.kind||"food"));
+  const rows=obWiz.stock.filter(s=>{const it=state.data.inv.find(i=>i.id===s.item_id);return it&&kinds.includes(it.kind||"food");});
+  body.innerHTML=`<div class="block"><div class="cmeta" style="margin-bottom:10px">${label} คงเหลือ ณ วันเริ่มระบบ — ใส่ปริมาณ (หน่วยฐาน) และต้นทุน/หน่วย · ข้ามได้ถ้าไม่มีของค้าง</div>
+    <div id="obStockRows">${rows.length?rows.map(s=>obStockRowHTML(s)).join(""):`<div class="cmeta">ยังไม่มีรายการ — กดเพิ่มด้านล่าง</div>`}</div>
+    <button class="ghostbtn" id="obAddStock" style="margin-top:8px">＋ เพิ่มรายการ</button></div>`;
+  document.getElementById("obAddStock").onclick=()=>{
+    const used=new Set(obWiz.stock.map(s=>s.item_id));
+    const avail=items.filter(i=>!used.has(i.id));
+    if(!avail.length){toast("เพิ่มครบทุกรายการแล้ว (หรือยังไม่มีรายการประเภทนี้ — สร้างที่ ต้นทุน/สต็อก)");return;}
+    openPicker({title:"เลือกรายการ",items:avail.map(i=>({id:i.id,label:i.name,sub:(KIND_TH[i.kind||"food"])+" · "+i.base_unit,keywords:i.name_en||""})),
+      emptyText:"ไม่พบรายการ",onPick:(id)=>{const it=state.data.inv.find(x=>x.id===id);obWiz.stock.push({item_id:id,qty:0,cost:ingCostPerUnit(id,monthOf(new Date()))||0});obRenderStock(document.getElementById("obBody"),kinds,label);}});
+  };
+  obWireStockRows(kinds,label);
+}
+function obStockRowHTML(s){
+  const it=state.data.inv.find(i=>i.id===s.item_id),k=it?(it.kind||"food"):"food";
+  return `<div class="block" data-strow="${s.item_id}" style="margin:0 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px"><div class="row"><b>${esc(it?it.name:"?")} <span class="badge" style="background:${KIND_COLOR[k]}22;color:${KIND_COLOR[k]};font-size:10px">${KIND_TH[k]}</span></b><button class="xbtn" data-strm="${s.item_id}">×</button></div>
+    <div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1"><div class="fhint">จำนวน (${esc(it?it.base_unit:"")})</div><input class="nin obSQty" data-item="${s.item_id}" style="margin-top:4px" inputmode="decimal" placeholder="0" value="${s.qty||""}"/></div>
+    <div style="flex:1"><div class="fhint">ต้นทุน/หน่วย (฿)</div><input class="nin obSCost" data-item="${s.item_id}" style="margin-top:4px" inputmode="decimal" placeholder="0" value="${s.cost||""}"/></div></div>
+    <div class="cmeta" style="margin-top:6px">มูลค่า ≈ <b class="obSVal">${fmtTHB((Number(s.qty)||0)*(Number(s.cost)||0))}</b></div></div>`;
+}
+function obWireStockRows(kinds,label){
+  document.querySelectorAll("[data-strm]").forEach(b=>b.onclick=()=>{obWiz.stock=obWiz.stock.filter(s=>s.item_id!==b.dataset.strm);obRenderStock(document.getElementById("obBody"),kinds,label);});
+  const upd=el=>{const id=el.dataset.item,s=obWiz.stock.find(x=>x.item_id===id);if(!s)return;s.qty=parseFloat(document.querySelector(`.obSQty[data-item="${id}"]`).value)||0;s.cost=parseFloat(document.querySelector(`.obSCost[data-item="${id}"]`).value)||0;const row=el.closest("[data-strow]");if(row){const v=row.querySelector(".obSVal");if(v)v.textContent=fmtTHB(s.qty*s.cost);}};
+  document.querySelectorAll(".obSQty,.obSCost").forEach(el=>el.oninput=()=>upd(el));
+}
+// ---- Step 6: AP ----
+function obRenderStep6(body){
+  body.innerHTML=`<div class="block"><div class="cmeta" style="margin-bottom:10px">เจ้าหนี้คงค้าง ณ วันเริ่มระบบ (เงินที่ค้างจ่ายซัพพลายเออร์อยู่ก่อนเปิดระบบ) · ข้ามได้ถ้าไม่มี</div>
+    <div id="obApRows">${obWiz.ap.length?obWiz.ap.map((a,i)=>obApRowHTML(a,i)).join(""):`<div class="cmeta">ยังไม่มีเจ้าหนี้ — กดเพิ่มด้านล่าง</div>`}</div>
+    <button class="ghostbtn" id="obAddAp" style="margin-top:8px">＋ เพิ่มเจ้าหนี้</button></div>`;
+  document.getElementById("obAddAp").onclick=()=>{
+    const sups=(state.data.suppliers||[]).filter(s=>s.active!==false);
+    if(!sups.length){openSheet("ยังไม่มีผู้ขาย",`<div class="cmeta" style="margin-bottom:12px">ต้องมีรายชื่อผู้ขายก่อน จึงจะบันทึกเจ้าหนี้ได้</div><button class="savebtn" id="obGoSup">＋ เพิ่มผู้ขายใหม่</button>`);document.getElementById("obGoSup").onclick=()=>{closeSheet();openSupplierSheet(null);};return;}
+    openPicker({title:"เลือกผู้ขาย",items:sups.map(s=>({id:s.id,label:s.name,sub:s.default_terms_days!=null?"เครดิต "+s.default_terms_days+" วัน":"เงินสด"})),
+      onCreate:q=>{closeSheet();openSupplierSheet(null);},createLabel:"เพิ่มผู้ขายใหม่…",createAlways:true,
+      onPick:(id)=>{const sup=supplierById(id);let due="";if(sup&&sup.default_terms_days!=null){const d=new Date(obWiz.date);d.setDate(d.getDate()+sup.default_terms_days);due=bkkDate(d);}obWiz.ap.push({supplier_id:id,amount:0,due_date:due,note:""});obRenderStep6(document.getElementById("obBody"));}});
+  };
+  obWireApRows();
+}
+function obApRowHTML(a,i){
+  const sup=supplierById(a.supplier_id);
+  return `<div class="block" style="margin:0 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px"><div class="row"><b>${esc(sup?sup.name:"?")}</b><button class="xbtn" data-aprm="${i}">×</button></div>
+    <div class="fhint" style="margin-top:8px">ยอดค้างชำระ (฿)</div><input class="nin obApAmt" data-idx="${i}" style="margin-top:4px" inputmode="decimal" placeholder="0" value="${a.amount||""}"/>
+    <div class="fhint" style="margin-top:8px">ครบกำหนด (ถ้ามี)</div><input type="date" class="nin obApDue" data-idx="${i}" style="margin-top:4px" value="${esc(a.due_date||"")}"/>
+    <input class="nin obApNote" data-idx="${i}" style="margin-top:8px" placeholder="หมายเหตุ (ถ้ามี)" value="${esc(a.note||"")}"/></div>`;
+}
+function obWireApRows(){
+  document.querySelectorAll("[data-aprm]").forEach(b=>b.onclick=()=>{obWiz.ap.splice(+b.dataset.aprm,1);obRenderStep6(document.getElementById("obBody"));});
+  document.querySelectorAll(".obApAmt").forEach(el=>el.oninput=()=>{obWiz.ap[+el.dataset.idx].amount=parseFloat(el.value)||0;});
+  document.querySelectorAll(".obApDue").forEach(el=>el.oninput=()=>{obWiz.ap[+el.dataset.idx].due_date=el.value;});
+  document.querySelectorAll(".obApNote").forEach(el=>el.oninput=()=>{obWiz.ap[+el.dataset.idx].note=el.value.trim();});
+}
+// ---- Step 7: summary + balance check ----
+function obRenderStep7(body){
+  const im=ingMap();
+  const cashTot=Object.values(obWiz.cash).reduce((s,v)=>s+(Number(v)||0),0);
+  const stockTot=obWiz.stock.reduce((s,x)=>s+(Number(x.qty)||0)*(Number(x.cost)||0),0);
+  const apTot=obWiz.ap.reduce((s,x)=>s+(Number(x.amount)||0),0);
+  const owner=Number(obWiz.ownerAmt)||0;
+  const assets=cashTot+owner+stockTot; // เงินสด + เงินลงทุน(เข้าบัญชี) + สต็อก
+  const retained=assets-apTot-owner; // กำไรสะสม/ทุนเดิมยกมา (balance) = สินทรัพย์ − เจ้าหนี้ − ทุนเจ้าของ
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  const acctName=id=>{const a=accts.find(x=>x.id===id);return a?a.name:"?";};
+  const row=(l,v,c)=>`<div class="row" style="margin-top:4px"><span>${l}</span><b class="tnum"${c?` style="color:${c}"`:""}>${fmtTHB(v)}</b></div>`;
+  body.innerHTML=`<div class="block"><div class="blocktitle" style="margin:0 0 8px">สินทรัพย์ตั้งต้น (Assets)</div><div class="costsum">
+      ${row("เงินสด/ธนาคาร",cashTot)}
+      ${owner>0?row("เงินลงทุนเจ้าของ (เข้า "+acctName(obWiz.ownerAcct)+")",owner):""}
+      ${row("มูลค่าสต็อกคงเหลือ",stockTot)}
+      <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>รวมสินทรัพย์</span><b class="tnum">${fmtTHB(assets)}</b></div>
+    </div></div>
+    <div class="block"><div class="blocktitle" style="margin:0 0 8px">แหล่งเงินทุน (Liabilities + Equity)</div><div class="costsum">
+      ${row("เจ้าหนี้คงค้าง (AP)",apTot,"#c0392b")}
+      ${owner>0?row("ทุนเจ้าของ (เงินลงทุน)",owner):""}
+      ${row("ทุน/กำไรสะสมยกมา (คำนวณให้สมดุล)",retained,retained<0?"#c0392b":"")}
+      <div class="row" style="margin-top:5px;border-top:1px solid #f0d8c8;padding-top:6px"><span>รวมแหล่งเงินทุน</span><b class="tnum">${fmtTHB(apTot+owner+retained)}</b></div>
+    </div>${retained<0?`<div class="warnbox" style="margin:10px 0 0">⚠️ ทุน/กำไรสะสมติดลบ (${fmtTHB(retained)}) — แปลว่าเจ้าหนี้มากกว่าสินทรัพย์ ตรวจตัวเลขอีกครั้งก่อนยืนยัน หากถูกต้องแล้ว (เช่น เพิ่งเปิดร้านมีหนี้เยอะ) ยืนยันต่อได้</div>`:`<div class="cmeta" style="margin-top:8px">✓ สมดุล — สินทรัพย์ = แหล่งเงินทุน (${fmtTHB(assets)})</div>`}</div>
+    ${obWiz.arAmt>0?`<div class="block"><div class="cmeta">📌 ลูกหนี้ตั้งต้น (memo): ${fmtTHB(obWiz.arAmt)}${obWiz.arNote?" · "+esc(obWiz.arNote):""} — บันทึกไว้อ้างอิงเท่านั้น ยังไม่มีโมดูลลูกหนี้</div></div>`:""}
+    <div class="block"><div class="blocktitle" style="margin:0 0 8px">รายละเอียด</div>
+      <div class="cmeta">วันเริ่มระบบ: <b>${esc(obWiz.date)}</b></div>
+      ${obWiz.stock.length?`<div class="cmeta" style="margin-top:6px">สต็อก ${obWiz.stock.length} รายการ · เจ้าหนี้ ${obWiz.ap.length} ราย</div>`:""}
+      <div class="cmeta" style="margin-top:8px;line-height:1.6">เมื่อยืนยัน ระบบจะสร้าง: เงินเข้า (opening) ในบัญชี · สต็อกตั้งต้น · เจ้าหนี้ · เงินลงทุนเจ้าของ — <b>ทำครั้งเดียว แก้ไม่ได้</b> (ต้องรีเซ็ตยอดยกมาถึงทำใหม่)</div></div>`;
+}
+
+// ---- persist current step to draft ----
+async function obSaveStep(){
+  if(!obWiz)return;
+  const step=obWiz.step;
+  // อ่านค่าจาก input ปัจจุบันก่อน (เผื่อยังไม่ blur)
+  if(step===1){const d=document.getElementById("obDate");if(d)obWiz.date=d.value||obWiz.date;}
+  if(step===2){const a=document.getElementById("obOwnerAmt");if(a)obWiz.ownerAmt=parseFloat(a.value)||0;const ac=document.getElementById("obOwnerAcct");if(ac)obWiz.ownerAcct=ac.value||"";if(!(obWiz.ownerAmt>0))obWiz.ownerAcct="";}
+  if(step===3){document.querySelectorAll(".obCash").forEach(el=>{const v=parseFloat(el.value);if(el.value.trim()!==""&&!isNaN(v))obWiz.cash[el.dataset.acct]=v;else delete obWiz.cash[el.dataset.acct];});}
+  // header update (date/owner/ar) — cash/stock/ap lines เขียนแยกด้านล่าง
+  try{
+    await patch(state.s,`opening_balances?id=eq.${obWiz.id}`,{opening_date:obWiz.date,owner_investment:obWiz.ownerAmt||0,owner_investment_account_id:(obWiz.ownerAmt>0?obWiz.ownerAcct||null:null),ar_opening_amount:obWiz.arAmt||null,ar_opening_note:obWiz.arNote||null});
+    if(step===3){await obReplaceLines("opening_balance_cash_lines",Object.entries(obWiz.cash).filter(([,v])=>Number(v)>0).map(([cash_account_id,amount])=>({store_id:state.data.store.id,opening_balance_id:obWiz.id,cash_account_id,amount:Number(amount)})));}
+    if(step===4||step===5){await obReplaceLines("opening_balance_stock_lines",obWiz.stock.filter(s=>Number(s.qty)>0).map(s=>({store_id:state.data.store.id,opening_balance_id:obWiz.id,inventory_item_id:s.item_id,qty_base:Number(s.qty),unit_cost:Number(s.cost)||0})));}
+    if(step===6){await obReplaceLines("opening_balance_ap_lines",obWiz.ap.filter(a=>Number(a.amount)>0).map(a=>({store_id:state.data.store.id,opening_balance_id:obWiz.id,supplier_id:a.supplier_id,amount:Number(a.amount),due_date:a.due_date||null,note:a.note||null})));}
+  }catch(e){toast("บันทึกร่างไม่สำเร็จ: "+e.message);throw e;}
+}
+async function obReplaceLines(table,rows){
+  await del(state.s,`${table}?opening_balance_id=eq.${obWiz.id}`);
+  if(rows.length)await post(state.s,table,rows,"return=minimal");
+}
+
+async function obNext(){
+  const step=obWiz.step,btn=document.getElementById("obNext");
+  // validation ต่อ step
+  if(step===1){const d=document.getElementById("obDate").value;if(!d){toast("เลือกวันที่เริ่มระบบ");return;}obWiz.date=d;}
+  if(step===2){const amt=parseFloat(val("obOwnerAmt"))||0;if(amt>0){const ac=val("obOwnerAcct");if(!ac){toast("เลือกบัญชีที่รับเงินลงทุน");return;}obWiz.ownerAcct=ac;}obWiz.ownerAmt=amt;}
+  if(step===4||step===5){for(const s of obWiz.stock){if(Number(s.qty)<0||Number(s.cost)<0){toast("จำนวน/ต้นทุนต้องไม่ติดลบ");return;}}}
+  if(step===6){for(const a of obWiz.ap){if(!a.supplier_id){toast("เจ้าหนี้ต้องเลือกผู้ขาย");return;}if(Number(a.amount)<0){toast("ยอดเจ้าหนี้ต้องไม่ติดลบ");return;}}}
+  btn.disabled=true;btn.textContent="กำลังบันทึก…";
+  try{
+    await obSaveStep();
+    if(step<7){obWiz.step++;await reloadData();renderOpeningWizard();}
+    else{await obConfirm();}
+  }catch(e){btn.disabled=false;btn.textContent=step<7?"ถัดไป ›":"ตรวจสอบ & ยืนยัน";}
+}
+
+async function obConfirm(){
+  // final validation
+  if(!obWiz.date){toast("ไม่มีวันที่เริ่มระบบ");return;}
+  if(obWiz.ownerAmt>0&&!obWiz.ownerAcct){toast("เงินลงทุน > 0 ต้องเลือกบัญชี");return;}
+  const dup=new Set();for(const s of obWiz.stock){if(dup.has(s.item_id)){toast("มีวัตถุดิบซ้ำในสต็อก");return;}dup.add(s.item_id);}
+  for(const a of obWiz.ap){if(!a.supplier_id){toast("เจ้าหนี้ต้องเลือกผู้ขาย");return;}}
+  const btn=document.getElementById("obNext");btn.disabled=true;btn.textContent="กำลังยืนยัน…";
+  try{
+    const res=await rpc(state.s,"confirm_opening_balance",{p_opening_balance_id:obWiz.id});
+    obWiz=null;
+    await reloadData();
+    toast(`ตั้งค่ายอดยกมาเรียบร้อย · เงิน ${res.cash_lines} · สต็อก ${res.stock_lines} · เจ้าหนี้ ${res.ap_lines}`);
+    renderOpeningSummary();
+  }catch(e){toast(e.message);btn.disabled=false;btn.textContent="ตรวจสอบ & ยืนยัน";}
+}
+
+// ---- Summary (after confirmed) ----
+function renderOpeningSummary(){
+  const ob=state.data.openingBalance;
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">ยอดยกมา (Opening Balance)</div></div>
+    ${ob&&ob.status==="confirmed"?`<div class="block"><div class="costsum">
+      <div class="row"><span>วันที่เริ่มระบบ</span><b>${esc(ob.opening_date)}</b></div>
+      <div class="row" style="margin-top:4px"><span>เงินลงทุนเจ้าของ</span><b class="tnum">${fmtTHB(ob.owner_investment)}</b></div>
+      ${ob.ar_opening_amount?`<div class="row" style="margin-top:4px"><span>ลูกหนี้ตั้งต้น (memo)</span><b class="tnum">${fmtTHB(ob.ar_opening_amount)}</b></div>`:""}
+      <div class="row" style="margin-top:4px"><span>ยืนยันเมื่อ</span><b>${ob.confirmed_at?bkkDateTime(new Date(ob.confirmed_at)):"-"}</b></div>
+    </div></div>
+    <div class="block"><div class="cmeta">✅ ตั้งค่ายอดยกมาเรียบร้อยแล้ว — ยอดเงิน/สต็อก/เจ้าหนี้ตั้งต้นถูกบันทึกเป็นรายการ opening ในระบบ (ไม่กระทบ P&L) · ทุกรายการหลังจากนี้เป็นการซื้อ/ผลิต/ขาย/ค่าใช้จ่ายตามปกติ</div></div>
+    <div class="block"><div class="cmeta">ต้องการแก้ไขยอดยกมา? ทำได้ที่ ตั้งค่า → ศูนย์รีเซ็ตข้อมูล → รีเซ็ตยอดยกมา แล้วตั้งค่าใหม่ (ป้องกันการสร้างยอดซ้ำโดยไม่ตั้งใจ)</div></div>`:`<div class="block"><div class="empty">ยังไม่ได้ยืนยันยอดยกมา</div><button class="savebtn" id="obStart" style="margin-top:10px">เริ่มตั้งค่ายอดยกมา</button></div>`}
+    <div style="height:20px"></div></div>`;
+  document.getElementById("back").onclick=()=>navigate("dash");
+  const s=document.getElementById("obStart");if(s)s.onclick=startOpeningWizard;
+}
+
 function renderResetCenter(){
   app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">🧯 ศูนย์รีเซ็ตข้อมูล</div></div>
     <div class="cmeta" style="margin:0 2px 12px">ทุกเมนูต้องยืนยันตัวตน (อีเมล+รหัสผ่าน) และพิมพ์ข้อความยืนยันก่อนทำงาน · <b>ออเดอร์/ลูกค้า</b> เป็นการเก็บถาวร (Archive) กู้คืนได้ ไม่ลบจริง</div>
@@ -1396,6 +1642,7 @@ function renderResetCenter(){
     <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="rcCust" style="margin-top:0;text-align:left">👥 ล้างลูกค้าทั้งหมด (Archive)</button><div class="cmeta" style="margin-top:8px">ซ่อนลูกค้าทั้งหมดจากการใช้งาน (ไม่ลบจริง) · ออเดอร์เดิมยังอยู่ · กู้คืนได้</div></div>
     <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="rcArch" style="margin-top:0;text-align:left">🗄️ รายการที่เก็บถาวร (กู้คืน)</button><div class="cmeta" style="margin-top:8px">ดูออเดอร์/ลูกค้าที่ถูก Archive แล้วกู้คืนทีละรายการ</div></div>
     <div class="blocktitle" style="color:#c0392b">อันตราย</div>
+    <div class="block" style="margin-bottom:10px"><button class="delbtn" id="rcOpening" style="margin-top:0">↩️ รีเซ็ตยอดยกมา (Opening Balance)</button><div class="cmeta" style="margin-top:8px">ล้างยอดยกมาทั้งชุด (เงินสด/สต็อก/เจ้าหนี้/เงินลงทุน ที่มาจาก opening) — ทำให้ร้านกลับเป็นเหมือนยังไม่เคยตั้งค่ายอดยกมา · ทำ Wizard ใหม่ได้ · <b style="color:#c0392b">กู้คืนไม่ได้</b></div></div>
     <div class="block"><button class="delbtn" id="rcAll" style="margin-top:0">🔥 รีเซ็ตทั้งระบบ (ลบถาวร)</button><div class="cmeta" style="margin-top:8px">ลบถาวร ออเดอร์/ลูกค้า/เมนู/Add-on/วัตถุดิบ ทั้งหมด · เก็บ user, ร้าน, แพ็กเกจ · <b style="color:#c0392b">กู้คืนไม่ได้</b></div></div>
     <div style="height:40px"></div></div>`;
   document.getElementById("back").onclick=renderSettings;
@@ -1410,6 +1657,11 @@ function renderResetCenter(){
     run:async()=>{const ids=(state.data.customers||[]).filter(c=>!c.is_guest).map(c=>c.id);if(!ids.length){toast("ไม่มีลูกค้าให้ล้าง");return;}const n=await rpc(state.s,"archive_customers",{p_ids:ids});await reloadData();toast(`เก็บถาวร ${n} ลูกค้าแล้ว`);renderResetCenter();}
   });
   document.getElementById("rcArch").onclick=renderArchived;
+  document.getElementById("rcOpening").onclick=()=>openResetGate({
+    title:"รีเซ็ตยอดยกมา",phrase:"รีเซ็ตยอดยกมา",
+    desc:"ล้างยอดยกมาทั้งชุด (opening) — เงินสด/สต็อก/เจ้าหนี้/เงินลงทุนที่มาจากการตั้งค่ายอดยกมา จะถูกย้อนกลับทั้งหมด ทำให้ร้านกลับเป็นเหมือนยังไม่เคยตั้งค่า (ทำ Wizard ใหม่ได้)",
+    run:async()=>{const res=await rpc(state.s,"reset_opening_balance",{p_store_id:state.data.store.id});await reloadData();toast(`รีเซ็ตยอดยกมาแล้ว · เงิน ${res.cash_movements_deleted} · สต็อก ${res.stock_movements_deleted} · เจ้าหนี้ ${res.payables_deleted}`);renderResetCenter();}
+  });
   document.getElementById("rcAll").onclick=renderClearConfirm;
 }
 // ===== ประตูยืนยัน 2 ชั้น (re-auth + พิมพ์ข้อความ) =====
