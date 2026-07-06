@@ -303,7 +303,7 @@ async function loadMaster(s,storeId){
   const monthStart=bkkDate(new Date()).slice(0,7)+"-01";
   const plMonth=await safeRest(s,`v_pl_daily?select=revenue,total_app_cost,cogs,opex,net_profit&store_id=eq.${storeId}&day=gte.${monthStart}`);
   const settlements=await safeRest(s,`v_settlement_reconcile?select=*&store_id=eq.${storeId}&order=period_start.desc`);
-  const salesChannels=await safeRest(s,`sales_channels?select=id,slug,name,color,logo,default_fee_rate,default_fee_vat_rate,uses_settlement,uses_epayment,is_default,active,sort_order&store_id=eq.${storeId}&order=sort_order.asc`);
+  const salesChannels=await safeRest(s,`sales_channels?select=id,slug,name,color,logo,default_fee_rate,default_fee_vat_rate,uses_settlement,uses_epayment,is_default,active,sort_order,receivable,default_cash_account_id,settlement_days&store_id=eq.${storeId}&order=sort_order.asc`);
   const prodRecipes=await safeRest(s,`production_recipes?select=id,output_item_id,version,is_current,output_unit,standard_input_qty,standard_output_qty,standard_yield_pct,shelf_life_days,active,note,created_at&store_id=eq.${storeId}&order=output_item_id.asc,version.desc`);
   const prodRecipeItems=await safeRest(s,`production_recipe_items?select=id,recipe_id,input_item_id,qty`);
   const prodOrders=await safeRest(s,`production_orders?select=id,recipe_id,recipe_version,output_item_id,batch_no,status,multiplier,planned_output,actual_output,waste_qty,yield_loss,actual_yield_pct,input_cost_total,unit_cost,output_unit,produced_at,expiry_at,note,created_at&store_id=eq.${storeId}&status=neq.archived&order=produced_at.desc.nullslast,created_at.desc&limit=200`);
@@ -313,6 +313,8 @@ async function loadMaster(s,storeId){
   const apSummary=await safeRest(s,`v_ap_summary?select=supplier_id,supplier_name,open_bills,balance,next_due&store_id=eq.${storeId}`);
   const payables=await safeRest(s,`accounts_payable?select=id,supplier_id,purchase_id,amount,paid_amount,due_date,status,origin,created_at&store_id=eq.${storeId}&status=neq.paid&order=due_date.asc.nullslast,created_at.asc`);
   const openingHead=await safeRest(s,`opening_balances?select=id,opening_date,owner_investment,owner_investment_account_id,ar_opening_amount,ar_opening_note,status,confirmed_at&store_id=eq.${storeId}&order=created_at.desc&limit=1`);
+  const arSummary=await safeRest(s,`v_ar_summary?select=debtor_type,debtor_key,debtor_name,open_bills,balance,next_due&store_id=eq.${storeId}`);
+  const receivables=await safeRest(s,`accounts_receivable?select=id,debtor_type,platform_source,customer_id,debtor_name,origin,order_id,amount,received_amount,status,due_date,created_at&store_id=eq.${storeId}&status=in.(open,partial)&order=created_at.asc`);
   const ob=openingHead&&openingHead[0]?openingHead[0]:null;
   let obCashLines=[],obStockLines=[],obApLines=[];
   if(ob&&ob.status==="draft"){
@@ -320,7 +322,7 @@ async function loadMaster(s,storeId){
     obStockLines=await safeRest(s,`opening_balance_stock_lines?select=id,inventory_item_id,qty_base,unit_cost&opening_balance_id=eq.${ob.id}`);
     obApLines=await safeRest(s,`opening_balance_ap_lines?select=id,supplier_id,amount,due_date,note&opening_balance_id=eq.${ob.id}`);
   }
-  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers,apSummary,payables,openingBalance:ob,obCashLines,obStockLines,obApLines};
+  return {menu,addons,links,inv,purchases,recipes,cats,pkgDefaults,channelPrices,stock,expenseCats,cashAccounts,cashBalance,feeSettings,adCosts,expenses,recurring,plMonth,settlements,salesChannels,prodRecipes,prodRecipeItems,prodOrders,semiCost,purchaseUnits,suppliers,apSummary,payables,openingBalance:ob,obCashLines,obStockLines,obApLines,arSummary,receivables};
 }
 async function loadAll(s){
   const store=await loadStore(s);
@@ -328,7 +330,7 @@ async function loadAll(s){
   const customers=await loadCustomers(s,store.id);
   const loyaltyOrders=await loadLoyalty(s,store.id);
   const m=await loadMaster(s,store.id);
-  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers,apSummary:m.apSummary,payables:m.payables,openingBalance:m.openingBalance,obCashLines:m.obCashLines,obStockLines:m.obStockLines,obApLines:m.obApLines};
+  return {store,orders,customers,loyaltyOrders,ingredients:m.inv,inv:m.inv,menu:m.menu,addons:m.addons,links:m.links,purchases:m.purchases,recipes:m.recipes,cats:m.cats,pkgDefaults:m.pkgDefaults,channelPrices:m.channelPrices,stock:m.stock,expenseCats:m.expenseCats,cashAccounts:m.cashAccounts,cashBalance:m.cashBalance,feeSettings:m.feeSettings,adCosts:m.adCosts,expenses:m.expenses,recurring:m.recurring,plMonth:m.plMonth,settlements:m.settlements,salesChannels:m.salesChannels,prodRecipes:m.prodRecipes,prodRecipeItems:m.prodRecipeItems,prodOrders:m.prodOrders,semiCost:m.semiCost,purchaseUnits:m.purchaseUnits,suppliers:m.suppliers,apSummary:m.apSummary,payables:m.payables,openingBalance:m.openingBalance,obCashLines:m.obCashLines,obStockLines:m.obStockLines,obApLines:m.obApLines,arSummary:m.arSummary,receivables:m.receivables};
 }
 async function fetchRecentOrders(s,storeId){return rest(s,`orders?select=id,source,status,net_total,ordered_at,customers(name),order_items(item_name,quantity,order_item_addons(name))&store_id=eq.${storeId}&status=neq.archived&order=ordered_at.desc&limit=50`);}
 async function fetchOrderDetail(s,id){
@@ -926,6 +928,7 @@ function renderDash(){
       </div>
     </div>
     ${lowStockCard()}
+    ${arCard()}
     <div class="sec"><div class="sectitle">🎯 AI แนะนำให้ทำ</div>${f.insights.map((ins,i)=>aiCard(ins,i)).join("")}</div>
     <div class="sec" id="analysis"><div class="sectitle">📈 วิเคราะห์ธุรกิจ</div>
       <div class="grid">
@@ -977,6 +980,7 @@ function renderDash(){
   {const tp=document.getElementById("toPL");if(tp)tp.onclick=()=>{state.reportTab="pl";navigate("reports");};}
   document.getElementById("settings").onclick=renderSettings;
   {const ob=document.getElementById("openingBanner");if(ob)ob.onclick=startOpeningWizard;}
+  {const g=document.getElementById("arGo");if(g)g.onclick=renderReceivables;}
   document.querySelectorAll("[data-loyal-cid]").forEach(b=>b.onclick=()=>{const c=state.data.customers.find(x=>x.id===b.dataset.loyalCid);if(c)renderCustomerDetail(c);});
   document.querySelectorAll("[data-ai]").forEach(b=>b.onclick=()=>handleAction(state.aiActions[+b.dataset.ai].action));
   document.getElementById("qaOrder").onclick=()=>{state.prev="dash";openAdd();};
@@ -1042,6 +1046,12 @@ function openChannelSheet(ch){
     <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">สี (hex)</div><input id="chColor" class="nin" style="margin-top:6px" placeholder="#00B14F" value="${ch&&ch.color?esc(ch.color):"#6B7280"}"/></div><div style="flex:1"><div class="fhint">โลโก้ (emoji)</div><input id="chLogo" class="nin" style="margin-top:6px" placeholder="🟢" value="${ch&&ch.logo?esc(ch.logo):""}"/></div></div>
     <div class="row" style="gap:8px;margin-top:10px"><div style="flex:1"><div class="fhint">GP % เริ่มต้น</div><input id="chGp" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${ch?r2(Number(ch.default_fee_rate)*100):""}"/></div><div style="flex:1"><div class="fhint">VAT % เริ่มต้น</div><input id="chVat" class="nin" inputmode="decimal" style="margin-top:6px" placeholder="0" value="${ch?r2(Number(ch.default_fee_vat_rate)*100):""}"/></div></div>
     <div class="fhint" style="margin-top:10px">ลำดับการแสดง</div><input id="chSort" class="nin" inputmode="numeric" style="margin-top:6px" placeholder="0" value="${ch?(ch.sort_order||0):""}"/>
+    <div class="fhint" style="margin-top:12px;font-weight:800">การรับเงิน</div>
+    <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chRecv" ${ch&&ch.receivable?"checked":""}/> <span>เงินเข้าทีหลัง — ขายแล้วตั้ง<b>ลูกหนี้ (AR)</b> รอแอปโอน</span></label>
+    <div class="fhint" style="margin-top:10px">บัญชีรับเงิน (ขายสดเข้าทันที / เงินโอน settlement เข้าบัญชีนี้)</div>
+    <select id="chAcct" class="nin" style="margin-top:6px"><option value="">— ไม่ระบุ —</option>${(state.data.cashAccounts||[]).filter(a=>a.active!==false).map(a=>`<option value="${a.id}"${ch&&ch.default_cash_account_id===a.id?" selected":""}>${esc(a.name)}</option>`).join("")}</select>
+    <div class="fhint" style="margin-top:10px">รอบโอน (วัน) — ใช้คำนวณวันครบกำหนดของลูกหนี้ เช่น 3</div>
+    <input id="chSettleDays" class="nin" inputmode="numeric" style="margin-top:6px" placeholder="เช่น 3" value="${ch&&ch.settlement_days!=null?ch.settlement_days:""}"/>
     <label style="display:flex;align-items:center;gap:10px;margin-top:12px"><input type="checkbox" id="chSettle" ${ch&&ch.uses_settlement?"checked":""}/> <span>มีรอบโอน/ตรวจ Settlement</span></label>
     <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chEpay" ${ch&&ch.uses_epayment?"checked":""}/> <span>รับผ่าน e-payment</span></label>
     <label style="display:flex;align-items:center;gap:10px;margin-top:8px"><input type="checkbox" id="chDefault" ${ch&&ch.is_default?"checked":""}/> <span>เป็นช่องทางตั้งต้น (เช่น หน้าร้าน)</span></label>
@@ -1052,7 +1062,7 @@ function openChannelSheet(ch){
     const name=val("chName").trim();if(!name){toast("ใส่ชื่อช่องทาง");return;}
     let slug=ch?ch.slug:(val("chSlug")||"").trim().toLowerCase().replace(/[^a-z0-9_]/g,"");
     if(isNew&&!slug){toast("ใส่ slug (a–z)");return;}
-    const body={name,color:(val("chColor").trim()||"#6B7280"),logo:val("chLogo").trim()||null,default_fee_rate:(parseFloat(val("chGp"))||0)/100,default_fee_vat_rate:(parseFloat(val("chVat"))||0)/100,sort_order:parseInt(val("chSort"))||0,uses_settlement:document.getElementById("chSettle").checked,uses_epayment:document.getElementById("chEpay").checked,is_default:document.getElementById("chDefault").checked,active:document.getElementById("chActive").checked};
+    const body={name,color:(val("chColor").trim()||"#6B7280"),logo:val("chLogo").trim()||null,default_fee_rate:(parseFloat(val("chGp"))||0)/100,default_fee_vat_rate:(parseFloat(val("chVat"))||0)/100,sort_order:parseInt(val("chSort"))||0,uses_settlement:document.getElementById("chSettle").checked,uses_epayment:document.getElementById("chEpay").checked,is_default:document.getElementById("chDefault").checked,active:document.getElementById("chActive").checked,receivable:document.getElementById("chRecv").checked,default_cash_account_id:val("chAcct")||null,settlement_days:val("chSettleDays").trim()!==""?parseInt(val("chSettleDays")):null};
     const btn=document.getElementById("chGo");btn.disabled=true;btn.textContent="กำลังบันทึก…";
     try{
       if(isNew){await post(state.s,"sales_channels",{store_id:state.data.store.id,slug,...body},"return=minimal");}
@@ -1313,7 +1323,8 @@ function renderSettings(){
     <div class="block"><button class="ghostbtn" id="pkgdef" style="margin-top:0">📦 ค่าเริ่มต้นบรรจุภัณฑ์ (ตามช่องทาง/เมนู)</button><div class="cmeta" style="margin-top:8px">ตั้งว่าแต่ละช่องทาง/เมนู ให้เติมกล่อง/ช้อน/ถุง อะไรอัตโนมัติตอนเปิดออเดอร์ — แก้เองได้เสมอก่อนบันทึก</div></div>
     <div class="blocktitle">การเงิน</div>
     <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="finance" style="margin-top:0">💰 บัญชี / การเงิน (GP·VAT · ค่าใช้จ่าย · บัญชีเงิน)</button><div class="cmeta" style="margin-top:8px">ตั้งค่าธรรมเนียมแอป (GP/VAT) ต่อช่องทาง · หมวดค่าใช้จ่าย · บัญชีเงิน · บันทึกค่าใช้จ่าย เพื่อให้เห็นกำไรสุทธิจริง</div></div>
-    <div class="block"><button class="ghostbtn" id="suppliers" style="margin-top:0">🏪 ผู้ขาย / เจ้าหนี้ (Supplier)</button><div class="cmeta" style="margin-top:8px">จัดการรายชื่อผู้ขาย/ซัพพลายเออร์ · เครดิตเทอม · ใช้ผูกกับการซื้อวัตถุดิบ · เจ้าหนี้ + ชำระเงิน</div></div>
+    <div class="block" style="margin-bottom:10px"><button class="ghostbtn" id="suppliers" style="margin-top:0">🏪 ผู้ขาย / เจ้าหนี้ (Supplier)</button><div class="cmeta" style="margin-top:8px">จัดการรายชื่อผู้ขาย/ซัพพลายเออร์ · เครดิตเทอม · ใช้ผูกกับการซื้อวัตถุดิบ · เจ้าหนี้ + ชำระเงิน</div></div>
+    <div class="block"><button class="ghostbtn" id="receivables" style="margin-top:0">📬 ลูกหนี้ / รอรับเงิน (AR)</button><div class="cmeta" style="margin-top:8px">เงินรอโอนจากแอป (Grab/LINE MAN/ไทยช่วยไทย+ ฯลฯ) · ลูกหนี้อื่น · รับชำระ/รับโอน settlement ที่นี่</div></div>
     <div class="blocktitle">การตรวจสอบ</div>
     <div class="block"><button class="ghostbtn" id="audit" style="margin-top:0">🧾 ประวัติการแก้ไข (Audit Log)</button><div class="cmeta" style="margin-top:8px">ใครแก้ · เวลา · ค่าเดิม → ค่าใหม่ ของวัตถุดิบ/การซื้อ/สูตร/เมนู/หมวด/Add-on</div></div>
     <div class="blocktitle">ข้อมูล</div>
@@ -1324,6 +1335,7 @@ function renderSettings(){
   document.getElementById("pkgdef").onclick=renderPackagingDefaults;
   document.getElementById("finance").onclick=renderFinance;
   document.getElementById("suppliers").onclick=renderSuppliers;
+  document.getElementById("receivables").onclick=renderReceivables;
   document.getElementById("channels").onclick=renderChannels;
   document.getElementById("resetc").onclick=renderResetCenter;
   document.getElementById("openingSetup").onclick=()=>{if(state.data.store.opening_completed_at)renderOpeningSummary();else startOpeningWizard();};
@@ -1402,6 +1414,95 @@ function openSupplierSheet(sup){
     catch(e){toast("ลบไม่ได้ (อาจมีการซื้อผูกอยู่) — ปิดใช้งานแทนได้");}
   };
 }
+// ===================== PHASE 7: ACCOUNTS RECEIVABLE (AR) =====================
+// กระจกเงาของ AP: header=accounts_receivable · ledger=ar_receipts · สรุป=v_ar_summary
+// Platform เป็นแค่ debtor_type หนึ่ง — ลูกหนี้องค์กร/จัดเลี้ยงใช้ workflow เดียวกัน
+function arCard(){
+  const sum=state.data.arSummary||[];
+  const tot=sum.reduce((s,a)=>s+Number(a.balance||0),0);
+  if(tot<=0)return "";
+  const parts=sum.filter(a=>Number(a.balance)>0).map(a=>`${esc(a.debtor_name||a.debtor_key)} ${fmtTHB(a.balance)}`).join(" · ");
+  return `<div class="sec"><div class="block" style="background:#eef4ff;border:1px solid #c8d8f0;margin:0"><div class="row"><b>📬 เงินรอรับจากลูกหนี้</b><b class="tnum" style="font-size:18px;color:#2563EB">${fmtTHB(tot)}</b></div><div class="cmeta" style="margin-top:4px">${parts}</div><button class="ghostbtn" id="arGo" style="margin-top:10px">ดูลูกหนี้ / รับเงิน →</button></div></div>`;
+}
+function arDebtorBadge(t){const m={platform:["แพลตฟอร์ม","#2563EB"],customer:["ลูกค้า","#0E9F6E"],other:["อื่น ๆ","#7C3AED"]};const[l,c]=m[t]||[t,"#666"];return `<span class="badge" style="background:${c}22;color:${c};font-size:10px">${l}</span>`;}
+function arBillsOf(d){
+  return (state.data.receivables||[]).filter(r=>{
+    if(r.debtor_type!==d.debtor_type)return false;
+    if(d.debtor_type==="platform")return r.platform_source===d.debtor_key;
+    if(d.debtor_type==="customer")return String(r.customer_id)===String(d.debtor_key);
+    return r.debtor_name===d.debtor_key;
+  });
+}
+function renderReceivables(){
+  const sum=(state.data.arSummary||[]).filter(a=>Number(a.balance)>0||Number(a.open_bills)>0);
+  const totalAR=sum.reduce((s,a)=>s+Number(a.balance||0),0);
+  app.innerHTML=`<div class="addwrap"><div class="phead"><button class="iconbtn" id="back">‹</button><div class="ptitle">📬 ลูกหนี้ / รอรับเงิน</div></div>
+    ${totalAR>0?`<div class="block" style="margin-bottom:10px;background:#eef4ff;border:1px solid #c8d8f0"><div class="row"><b>ยอดค้างรับรวม</b><b class="tnum" style="color:#2563EB;font-size:18px">${fmtTHB(totalAR)}</b></div><div class="cmeta" style="margin-top:3px">แตะลูกหนี้เพื่อดูบิล/รับชำระ · แพลตฟอร์มกด "รับเงินโอน" เพื่อจัดสรรอัตโนมัติ</div></div>`:""}
+    ${sum.length?sum.map((d,i)=>{const bal=Number(d.balance);return `<div class="block" style="margin:0 20px 9px;padding:0"><button class="mmmain" data-ardebtor="${i}" style="width:100%;text-align:left;padding:13px 14px 6px"><div class="mmname">${esc(d.debtor_name||d.debtor_key)} ${arDebtorBadge(d.debtor_type)}${bal>0?` <span class="badge" style="background:#2563EB22;color:#2563EB;font-size:11px;font-weight:700">ค้างรับ ${fmtTHB(bal)}</span>`:""}</div><div class="mmsub">${d.open_bills} บิลค้าง${d.next_due?` · ครบกำหนด ${d.next_due}`:""}</div></button>${d.debtor_type==="platform"&&bal>0?`<button class="savebtn" data-arsettle="${esc(d.debtor_key)}" style="margin:0 14px 8px;width:calc(100% - 28px);height:44px;font-size:14px">💸 รับเงินโอนจากแอป (จัดสรรอัตโนมัติ)</button>`:""}${bal>0?`<button class="ghostbtn" data-arbills="${i}" style="margin:0 14px 12px;width:calc(100% - 28px)">🧾 ดูบิล / รับชำระรายใบ</button>`:""}</div>`;}).join(""):`<div class="empty">ไม่มีลูกหนี้ค้างรับ 🎉<br>ออเดอร์จากช่องทางที่ตั้ง "เงินเข้าทีหลัง" จะมาปรากฏที่นี่</div>`}
+    <div class="block" style="margin-top:6px"><div class="cmeta">💡 ตั้งช่องทางไหนเป็นลูกหนี้ได้ที่ ตั้งค่า → ช่องทางการขาย → เปิด "เงินเข้าทีหลัง (AR)" + ใส่รอบโอน</div></div>
+    <div style="height:30px"></div></div>`;
+  document.getElementById("back").onclick=renderSettings;
+  document.querySelectorAll("[data-ardebtor],[data-arbills]").forEach(b=>b.onclick=()=>{const d=sum[+(b.dataset.ardebtor??b.dataset.arbills)];openArBillsSheet(d);});
+  document.querySelectorAll("[data-arsettle]").forEach(b=>b.onclick=e=>{e.stopPropagation();openSettlementReceiveSheet(b.dataset.arsettle);});
+}
+function openArBillsSheet(d){
+  const bills=arBillsOf(d);
+  openSheet(`ลูกหนี้: ${d.debtor_name||d.debtor_key}`,`
+    ${bills.length?bills.map(r=>{const bal=Number(r.amount)-Number(r.received_amount);
+      return `<div class="block" style="margin:0 0 8px"><div class="row"><span>${r.order_id?"ออเดอร์":"รายการ"} <span class="cmeta">${r.created_at?bkkDate(new Date(r.created_at)):""}</span></span><b class="tnum" style="color:#2563EB">${fmtTHB(bal)}</b></div><div class="cmeta" style="margin-top:2px">ยอดบิล ${fmtTHB(r.amount)}${Number(r.received_amount)>0?` · รับแล้ว ${fmtTHB(r.received_amount)}`:""}${r.due_date?` · ครบกำหนด ${r.due_date}`:""} · ${r.status==="partial"?"รับบางส่วน":"ค้างรับ"}</div><button class="savebtn" data-arrecv="${r.id}" data-bal="${bal}" style="margin-top:8px;height:44px;font-size:14px">💵 รับชำระบิลนี้</button></div>`;}).join(""):`<div class="cmeta">ไม่มีบิลค้างรับ</div>`}
+    <div style="height:10px"></div>`);
+  document.querySelectorAll("[data-arrecv]").forEach(b=>b.onclick=()=>openReceiveArSheet(b.dataset.arrecv,Number(b.dataset.bal),d));
+}
+function openReceiveArSheet(arId,balance,d){
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  openSheet("รับชำระจากลูกหนี้",`
+    <div class="cmeta" style="margin-bottom:10px">ยอดค้างรับ <b style="color:#2563EB">${fmtTHB(balance)}</b> · ${esc(d.debtor_name||d.debtor_key)}</div>
+    <div class="fhint">รับเงินเข้าบัญชี</div>
+    <select id="arAcct" class="nin" style="margin-top:6px">${accts.length?accts.map((a,i)=>{const bal=(state.data.cashBalance||[]).find(b=>b.account_id===a.id);return `<option value="${a.id}"${i===0?" selected":""}>${esc(a.name)}${bal?" · ฿"+fmt2(bal.balance):""}</option>`;}).join(""):`<option value="">— ยังไม่มีบัญชีเงิน —</option>`}</select>
+    <div class="fhint" style="margin-top:12px">จำนวนที่รับ (บาท)</div>
+    <input id="arAmt" class="nin" style="margin-top:6px" inputmode="decimal" value="${fmt2(balance)}"/>
+    <div class="cmeta" style="margin-top:4px">รับเต็มหรือบางส่วนก็ได้ (ไม่เกินยอดค้าง)</div>
+    <input id="arNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ (ถ้ามี)"/>
+    <button class="savebtn" id="arGo2" style="margin-top:14px">ยืนยันรับเงิน</button>`);
+  document.getElementById("arGo2").onclick=async()=>{
+    const acct=val("arAcct"),amt=parseFloat(val("arAmt"))||0;
+    if(!acct){toast("เลือกบัญชีเงิน");return;}
+    if(amt<=0){toast("ใส่จำนวนเงิน");return;}
+    if(amt>balance+0.001){toast("รับเกินยอดค้าง");return;}
+    const btn=document.getElementById("arGo2");btn.disabled=true;btn.textContent="กำลังบันทึก…";
+    try{const res=await rpc(state.s,"receive_ar",{p_ar_id:arId,p_cash_account:acct,p_amount:amt,p_note:val("arNote").trim()||null});await reloadData();closeSheet();toast(res.status==="paid"?"รับครบแล้ว ✓":`รับบางส่วนแล้ว · เหลือ ${fmtTHB(res.balance)}`);renderReceivables();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันรับเงิน";}
+  };
+}
+function openSettlementReceiveSheet(source){
+  const accts=(state.data.cashAccounts||[]).filter(a=>a.active!==false);
+  const ch=chBySlug(source);
+  const open=(state.data.receivables||[]).filter(r=>r.debtor_type==="platform"&&r.platform_source===source);
+  const bal=open.reduce((s,r)=>s+Number(r.amount)-Number(r.received_amount),0);
+  const today=bkkDate(new Date());
+  openSheet("💸 รับเงินโอน · "+chName(source),`
+    <div class="cmeta" style="margin-bottom:10px">ยอดค้างรับของช่องทางนี้ <b style="color:#2563EB">${fmtTHB(bal)}</b> (${open.length} บิล)<br>ระบบจะจัดสรรยอดโอนเข้าบิล<b>เก่าสุดก่อน (FIFO)</b> · โอนไม่ครบ = บิลที่เหลือค้างรอรอบถัดไป · โอนเกิน = บันทึกส่วนต่างไว้ตรวจสอบ (ไม่แก้ P&L ย้อนหลัง)</div>
+    <div class="row" style="gap:8px"><div style="flex:1"><div class="fhint">รอบตั้งแต่</div><input type="date" id="stlFrom" class="nin" style="margin-top:6px" value="${today}"/></div><div style="flex:1"><div class="fhint">ถึง</div><input type="date" id="stlTo" class="nin" style="margin-top:6px" value="${today}"/></div></div>
+    <div class="fhint" style="margin-top:10px">รับเงินเข้าบัญชี</div>
+    <select id="stlAcct" class="nin" style="margin-top:6px">${accts.length?accts.map(a=>{const b=(state.data.cashBalance||[]).find(x=>x.account_id===a.id);const sel=ch&&ch.default_cash_account_id===a.id;return `<option value="${a.id}"${sel?" selected":""}>${esc(a.name)}${b?" · ฿"+fmt2(b.balance):""}</option>`;}).join(""):`<option value="">— ยังไม่มีบัญชีเงิน —</option>`}</select>
+    <div class="fhint" style="margin-top:12px">ยอดโอนจริงที่ได้รับ (net payout)</div>
+    <input id="stlAmt" class="nin" style="margin-top:6px" inputmode="decimal" placeholder="${fmt2(bal)}"/>
+    <input id="stlNote" class="nin" style="margin-top:10px" placeholder="หมายเหตุ / เลขรอบโอน (ถ้ามี)"/>
+    <button class="savebtn" id="stlGo" style="margin-top:14px">ยืนยันรับเงินโอน</button>`);
+  document.getElementById("stlGo").onclick=async()=>{
+    const acct=val("stlAcct"),amt=parseFloat(val("stlAmt"))||0,f=val("stlFrom")||today,t=val("stlTo")||today;
+    if(!acct){toast("เลือกบัญชีเงิน");return;}
+    if(amt<=0){toast("ใส่ยอดโอนจริง");return;}
+    if(t<f){toast("ช่วงวันที่ไม่ถูกต้อง");return;}
+    const btn=document.getElementById("stlGo");btn.disabled=true;btn.textContent="กำลังจัดสรร…";
+    try{const res=await rpc(state.s,"receive_settlement",{p_store_id:state.data.store.id,p_source:source,p_period_start:f,p_period_end:t,p_cash_account:acct,p_net_payout:amt,p_note:val("stlNote").trim()||null});
+      await reloadData();closeSheet();
+      toast(`รับเงินแล้ว · จ่ายเข้า ${res.ar_paid} บิล${Number(res.variance)!==0?` · ⚠️ ส่วนต่าง ${fmtTHB(res.variance)} (ดูในเอกสารสรุปยอด)`:""}`);
+      renderReceivables();}
+    catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยันรับเงินโอน";}
+  };
+}
+
 // ===================== PHASE 6: OPENING BALANCE WIZARD =====================
 // Single Source of Truth: cash/stock/AP opening = ledger movements (kind='opening')
 // สร้าง draft header ทันที · auto-save ทุก "ถัดไป" · commit atomic ผ่าน confirm_opening_balance
@@ -1838,8 +1939,8 @@ async function renderOrderDetail(id){
   if(fin){const fe=document.getElementById("finEdit");if(fe)fe.onclick=()=>openOrderFinSheet(o,fin);}
   else{const fi=document.getElementById("finInit");if(fi)fi.onclick=async()=>{try{await syncOrderFinancials(o.id,o.source,Number(o.net_total));await reloadData();toast("สร้างข้อมูลการเงินแล้ว");renderOrderDetail(o.id);}catch(e){toast(e.message);}};}
   document.querySelectorAll("#osrcChips .chip").forEach(b=>b.onclick=async()=>{const src=b.dataset.osrc;if(src===o.source)return;try{await patch(state.s,`orders?id=eq.${o.id}`,{source:src});try{await syncOrderFinancials(o.id,src,Number(o.net_total),true);}catch(e2){}await reloadData();toast("เปลี่ยนช่องทางเป็น "+(SRC_MAP[src]||src)+" · คำนวณ GP ใหม่");renderOrderDetail(o.id);}catch(e){toast(e.message);}});
-  if(cancelled)document.getElementById("restore").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"completed"});await reloadData();toast("กู้คืนแล้ว");navigate("orders");}catch(e){toast(e.message);}};
-  else document.getElementById("cancelo").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"cancelled"});await reloadData();toast("ยกเลิกออเดอร์แล้ว");navigate("orders");}catch(e){toast(e.message);}};
+  if(cancelled)document.getElementById("restore").onclick=async()=>{try{await patch(state.s,`orders?id=eq.${o.id}`,{status:"completed"});const arr=await safeRest(state.s,`accounts_receivable?select=id,received_amount,status&order_id=eq.${o.id}&limit=1`);if(arr&&arr[0]&&arr[0].status==="cancelled"&&Number(arr[0].received_amount)===0)await patch(state.s,`accounts_receivable?id=eq.${arr[0].id}`,{status:"open"});await reloadData();toast("กู้คืนแล้ว");navigate("orders");}catch(e){toast(e.message);}};
+  else document.getElementById("cancelo").onclick=async()=>{try{const arr=await safeRest(state.s,`accounts_receivable?select=id,received_amount,status&order_id=eq.${o.id}&limit=1`);const ar=arr&&arr[0];if(ar&&Number(ar.received_amount)>0){toast("ออเดอร์นี้รับเงินจากลูกหนี้แล้ว — ยกเลิกตรง ๆ ไม่ได้");return;}await patch(state.s,`orders?id=eq.${o.id}`,{status:"cancelled"});if(ar&&ar.status!=="cancelled")await patch(state.s,`accounts_receivable?id=eq.${ar.id}`,{status:"cancelled"});await reloadData();toast("ยกเลิกออเดอร์แล้ว");navigate("orders");}catch(e){toast(e.message);}};
 }
 
 function renderCustomers(filter=""){
@@ -2909,6 +3010,7 @@ async function saveOrder(andNext){
     const im=ingMap();const pkgRows=(draft.packaging||[]).filter(p=>Number(p.qty)>0).map(p=>{const it=im[p.item_id],k=(it&&it.kind==="packaging")?"packaging":"supply";return {store_id,order_id:oid,inventory_item_id:p.item_id,kind:k,qty:Number(p.qty),unit_cost_snapshot:r2(ingCostPerUnit(p.item_id,saleMonth))};});
     if(pkgRows.length)await post(state.s,"order_packaging",pkgRows,"return=minimal");
     try{await syncOrderFinancials(oid,draft.source,subtotal);}catch(e){/* การเงินไม่ควรทำให้บันทึกออเดอร์ล้ม */}
+    if(!draft.editId){try{await rpc(state.s,"finalize_order_payment",{p_order_id:oid});}catch(e){/* AR/cash ไม่ควรทำให้บันทึกออเดอร์ล้ม — ดูได้ที่หน้าลูกหนี้ */}}
     await reloadData();
     if(draft.editId){toast("แก้ไขออเดอร์แล้ว");navigate("orders");return;}
     toast("บันทึกออเดอร์แล้ว · "+fmtTHB(subtotal));
