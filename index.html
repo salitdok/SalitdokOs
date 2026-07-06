@@ -1874,8 +1874,33 @@ function renderClearConfirm(){
 async function clearData(){
   const btn=document.getElementById("confirm");btn.disabled=true;btn.textContent="กำลังล้างข้อมูล…";
   try{const sid=state.data.store.id;
+    // 1) การเงินลูกหนี้/เจ้าหนี้ (ลบลูกก่อนแม่ตาม FK)
+    await del(state.s,`ar_receipts?store_id=eq.${sid}`);
+    await del(state.s,`accounts_receivable?store_id=eq.${sid}`);
+    await del(state.s,`platform_settlements?store_id=eq.${sid}`);
+    await del(state.s,`ap_payments?store_id=eq.${sid}`);
+    await del(state.s,`accounts_payable?store_id=eq.${sid}`);
+    await del(state.s,`cash_movements?store_id=eq.${sid}`);
+    // 2) ยอดยกมาทั้งชุด + เคลียร์ flag (owner-only RPC — ถ้าไม่ผ่านให้ลบตรง)
+    try{await rpc(state.s,"reset_opening_balance",{p_store_id:sid});}catch(e){await del(state.s,`opening_balances?store_id=eq.${sid}`);}
+    // 3) ออเดอร์/ลูกค้า
     await del(state.s,`orders?store_id=eq.${sid}`);await del(state.s,`customers?store_id=eq.${sid}`);
-    await del(state.s,`recipe_items?store_id=eq.${sid}`);await del(state.s,`ingredient_purchases?store_id=eq.${sid}`);await del(state.s,`inventory_items?store_id=eq.${sid}`);await del(state.s,`ingredients?store_id=eq.${sid}`);
+    // 4) การผลิต (recipe_items ไม่มี store_id — ลบผ่าน recipe ids)
+    await del(state.s,`production_orders?store_id=eq.${sid}`);
+    const _prs=await safeRest(state.s,`production_recipes?select=id&store_id=eq.${sid}`);
+    if(_prs.length)await del(state.s,`production_recipe_items?recipe_id=in.(${_prs.map(r=>r.id).join(",")})`);
+    await del(state.s,`production_recipes?store_id=eq.${sid}`);
+    // 5) สต็อก/วัตถุดิบ
+    await del(state.s,`stock_movements?store_id=eq.${sid}`);
+    await del(state.s,`item_purchase_units?store_id=eq.${sid}`);
+    await del(state.s,`packaging_defaults?store_id=eq.${sid}`);
+    await del(state.s,`recipe_items?store_id=eq.${sid}`);
+    await del(state.s,`ingredient_purchases?store_id=eq.${sid}`);
+    await del(state.s,`inventory_items?store_id=eq.${sid}`);
+    await del(state.s,`ingredients?store_id=eq.${sid}`);
+    // 6) เมนู/Add-on (ลบ links + ราคาช่องทางก่อน)
+    await del(state.s,`channel_prices?store_id=eq.${sid}`);
+    await del(state.s,`addon_links?store_id=eq.${sid}`);
     await del(state.s,`menu_items?store_id=eq.${sid}`);await del(state.s,`addons?store_id=eq.${sid}`);
     await reloadData();toast("ล้างข้อมูลแล้ว");state.menuSeg="items";navigate("menu");
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent="ยืนยัน ล้างข้อมูลทั้งหมด";}
